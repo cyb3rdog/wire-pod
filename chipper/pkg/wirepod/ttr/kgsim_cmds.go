@@ -658,33 +658,35 @@ func WaitForAnim_Queue(esn string) {
 	for i, q := range AnimationQueues {
 		if q.ESN == esn {
 			if q.AnimCurrentlyPlaying {
-				for range AnimationQueues[i].AnimDone {
-					break
-				}
-				return
+				// Snapshot the channel so we wait on the correct one even if
+				// StartAnim_Queue replaces it for the next animation.
+				done := AnimationQueues[i].AnimDone
+				<-done // unblocks when StopAnim_Queue closes the channel
 			}
+			return
 		}
 	}
 }
 
 func StartAnim_Queue(esn string) {
-	// if animation is already playing, just wait for it to be done
+	// If an animation is already playing, wait for it to finish first.
 	for i, q := range AnimationQueues {
 		if q.ESN == esn {
 			if q.AnimCurrentlyPlaying {
-				for range AnimationQueues[i].AnimDone {
-					logger.Println("(waiting for animation to be done...)")
-					break
-				}
-			} else {
-				AnimationQueues[i].AnimCurrentlyPlaying = true
+				// Snapshot so we wait on the current channel, not a future one.
+				done := AnimationQueues[i].AnimDone
+				<-done // StopAnim_Queue closes this, waking ALL waiters at once
 			}
+			// Prepare a fresh channel for this animation's completion signal,
+			// and mark it as playing regardless of which path we took above.
+			AnimationQueues[i].AnimDone = make(chan struct{})
+			AnimationQueues[i].AnimCurrentlyPlaying = true
 			return
 		}
 	}
 	var aq AnimationQueue
 	aq.AnimCurrentlyPlaying = true
-	aq.AnimDone = make(chan bool)
+	aq.AnimDone = make(chan struct{})
 	aq.ESN = esn
 	AnimationQueues = append(AnimationQueues, aq)
 }
@@ -692,10 +694,10 @@ func StartAnim_Queue(esn string) {
 func StopAnim_Queue(esn string) {
 	for i, q := range AnimationQueues {
 		if q.ESN == esn {
-			AnimationQueues[i].AnimCurrentlyPlaying = false
-			select {
-			case AnimationQueues[i].AnimDone <- true:
-			default:
+			// Guard against double-close (close of a closed channel panics).
+			if AnimationQueues[i].AnimCurrentlyPlaying {
+				AnimationQueues[i].AnimCurrentlyPlaying = false
+				close(AnimationQueues[i].AnimDone) // broadcasts to ALL waiters simultaneously
 			}
 		}
 	}
@@ -703,7 +705,7 @@ func StopAnim_Queue(esn string) {
 
 type AnimationQueue struct {
 	ESN                  string
-	AnimDone             chan bool
+	AnimDone             chan struct{} // closed (not sent on) to broadcast completion to all waiters
 	AnimCurrentlyPlaying bool
 }
 

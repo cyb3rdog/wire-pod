@@ -348,6 +348,7 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 
 			if err != nil {
 				logger.Println("Stream error: " + err.Error())
+				isDone = true // no more content will arrive
 				closeStreamDone()
 				return
 			}
@@ -470,12 +471,13 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 					logger.Println("Waiting for more content from LLM...")
 					select {
 					case <-speakReady:
-						respSlice = fullRespSlice
+						// new sentence added; restart loop to re-snapshot fullRespSlice
 					case <-streamDone:
-						respSlice = fullRespSlice
+						// stream finished (isDone=true or error); restart loop to hit break
 					case <-interruptedCh:
 						break outerLoop
 					}
+					continue // re-snapshot respSlice at top and re-check condition
 				} else {
 					break outerLoop
 				}
