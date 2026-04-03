@@ -8,6 +8,7 @@ import (
 	"log"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -256,6 +257,9 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 		c = openai.NewClient(vars.APIConfig.Knowledge.Key)
 	}
 	speakReady := make(chan string)
+	streamDone := make(chan struct{})
+	var streamDoneOnce sync.Once
+	closeStreamDone := func() { streamDoneOnce.Do(func() { close(streamDone) }) }
 	successIntent := make(chan bool)
 
 	aireq := CreateAIReq(transcribedText, esn, false, isKG)
@@ -338,17 +342,20 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 				}
 				logger.LogUI("LLM response for " + esn + ": " + newStr)
 				logger.Println("LLM stream finished")
+				closeStreamDone()
 				return
 			}
 
 			if err != nil {
 				logger.Println("Stream error: " + err.Error())
+				closeStreamDone()
 				return
 			}
 
 			if len(response.Choices) == 0 {
-				logger.Println("Empty response")
-				return
+				// Together AI and some providers send empty-Choices delta chunks as
+				// stream init/heartbeat artifacts — skip them, do not abort.
+				continue
 			}
 
 			fullfullRespText = fullfullRespText + removeSpecialCharacters(response.Choices[0].Delta.Content)
@@ -397,8 +404,12 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 		BControl(robot, ctx, start, stop)
 	}
 	interrupted := false
+	interruptedCh := make(chan struct{})
 	go func() {
-		interrupted = InterruptKGSimWhenTouchedOrWaked(robot, stop, stopStop)
+		if InterruptKGSimWhenTouchedOrWaked(robot, stop, stopStop) {
+			interrupted = true
+			close(interruptedCh)
+		}
 	}()
 	var TTSLoopAnimation string
 	var TTSGetinAnimation string
@@ -451,28 +462,33 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 		}
 		var disconnect bool
 		numInResp := 0
+	outerLoop:
 		for {
 			respSlice := fullRespSlice
 			if len(respSlice)-1 < numInResp {
 				if !isDone {
 					logger.Println("Waiting for more content from LLM...")
-					for range speakReady {
+					select {
+					case <-speakReady:
 						respSlice = fullRespSlice
-						break
+					case <-streamDone:
+						respSlice = fullRespSlice
+					case <-interruptedCh:
+						break outerLoop
 					}
 				} else {
-					break
+					break outerLoop
 				}
 			}
 			if interrupted {
-				break
+				break outerLoop
 			}
 			logger.Println(respSlice[numInResp])
 			acts := GetActionsFromString(respSlice[numInResp])
 			nChat[len(nChat)-1].Content = fullRespText
 			disconnect = PerformActions(nChat, acts, robot, stopStop)
 			if disconnect {
-				break
+				break outerLoop
 			}
 			numInResp = numInResp + 1
 		}

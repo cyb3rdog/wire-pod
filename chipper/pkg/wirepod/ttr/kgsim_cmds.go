@@ -559,6 +559,9 @@ func DoGetImage(msgs []openai.ChatCompletionMessage, param string, robot *vector
 				logger.Println("Stream error: " + err.Error())
 				return
 			}
+			if len(response.Choices) == 0 {
+				continue
+			}
 			fullfullRespText = fullfullRespText + removeSpecialCharacters(response.Choices[0].Delta.Content)
 			fullRespText = fullRespText + removeSpecialCharacters(response.Choices[0].Delta.Content)
 			if strings.Contains(fullRespText, "...") || strings.Contains(fullRespText, ".'") || strings.Contains(fullRespText, ".\"") || strings.Contains(fullRespText, ".") || strings.Contains(fullRespText, "?") || strings.Contains(fullRespText, "!") {
