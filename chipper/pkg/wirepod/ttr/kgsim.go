@@ -192,7 +192,9 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 	stop := make(chan bool)
 	stopStop := make(chan bool)
 	kgReadyToAnswer := make(chan bool)
-	kgStopLooping := false
+	kgStop := make(chan struct{})
+	var kgStopOnce sync.Once
+	stopKGAnim := func() { kgStopOnce.Do(func() { close(kgStop) }) }
 	ctx := context.Background()
 	matched := false
 	var robot *vector.Vector
@@ -221,9 +223,11 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 		BControl(robot, ctx, start, stop)
 		go func() {
 			for {
-				if kgStopLooping {
+				select {
+				case <-kgStop:
 					kgReadyToAnswer <- true
-					break
+					return
+				default:
 				}
 				robot.Conn.PlayAnimation(ctx, &vectorpb.PlayAnimationRequest{
 					Animation: &vectorpb.Animation{
@@ -305,7 +309,7 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 					logger.Println("LLM returned no response")
 					successIntent <- false
 					if isKG {
-						kgStopLooping = true
+						stopKGAnim()
 						for range kgReadyToAnswer {
 							break
 						}
@@ -349,6 +353,10 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 			if err != nil {
 				logger.Println("Stream error: " + err.Error())
 				isDone = true // no more content will arrive
+				select {
+				case successIntent <- false:
+				default:
+				}
 				closeStreamDone()
 				return
 			}
@@ -426,7 +434,7 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 	TTSLoopStopped := make(chan bool)
 	for range start {
 		if isKG {
-			kgStopLooping = true
+			stopKGAnim()
 			for range kgReadyToAnswer {
 				break
 			}

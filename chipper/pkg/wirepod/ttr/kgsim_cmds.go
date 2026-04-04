@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fforchino/vector-go-sdk/pkg/vector"
@@ -484,6 +485,9 @@ func DoGetImage(msgs []openai.ChatCompletionMessage, param string, robot *vector
 	}
 	ctx := context.Background()
 	speakReady := make(chan string)
+	streamDone := make(chan struct{})
+	var streamDoneOnce sync.Once
+	closeStreamDone := func() { streamDoneOnce.Do(func() { close(streamDone) }) }
 
 	aireq := openai.ChatCompletionRequest{
 		MaxTokens:        2048,
@@ -552,11 +556,14 @@ func DoGetImage(msgs []openai.ChatCompletionMessage, param string, robot *vector
 				}
 				logger.LogUI("LLM response for " + robot.Cfg.SerialNo + ": " + newStr)
 				logger.Println("LLM stream finished")
+				closeStreamDone()
 				return
 			}
 
 			if err != nil {
 				logger.Println("Stream error: " + err.Error())
+				isDone = true // no more content will arrive
+				closeStreamDone()
 				return
 			}
 			if len(response.Choices) == 0 {
@@ -598,10 +605,13 @@ func DoGetImage(msgs []openai.ChatCompletionMessage, param string, robot *vector
 		if len(respSlice)-1 < numInResp {
 			if !isDone {
 				logger.Println("Waiting for more content from LLM...")
-				for range speakReady {
-					respSlice = fullRespSlice
-					break
+				select {
+				case <-speakReady:
+					// new sentence; re-snapshot fullRespSlice at top of loop
+				case <-streamDone:
+					// stream finished or errored; re-check isDone at top of loop
 				}
+				continue
 			} else {
 				break
 			}
@@ -627,6 +637,7 @@ func PerformActions(msgs []openai.ChatCompletionMessage, actions []RobotAction, 
 	go func() {
 		for range stopStop {
 			stopPerforming = true
+			break
 		}
 	}()
 	for _, action := range actions {
@@ -653,52 +664,73 @@ func PerformActions(msgs []openai.ChatCompletionMessage, actions []RobotAction, 
 	WaitForAnim_Queue(robot.Cfg.SerialNo)
 	return false
 }
+var animQueueMu sync.Mutex
 
 func WaitForAnim_Queue(esn string) {
-	for i, q := range AnimationQueues {
-		if q.ESN == esn {
-			if q.AnimCurrentlyPlaying {
-				// Snapshot the channel so we wait on the correct one even if
-				// StartAnim_Queue replaces it for the next animation.
-				done := AnimationQueues[i].AnimDone
-				<-done // unblocks when StopAnim_Queue closes the channel
+	for {
+		animQueueMu.Lock()
+		for i, q := range AnimationQueues {
+			if q.ESN == esn {
+				if AnimationQueues[i].AnimCurrentlyPlaying {
+					done := AnimationQueues[i].AnimDone
+					animQueueMu.Unlock()
+					<-done // StopAnim_Queue closes this channel to broadcast
+					goto retry
+				}
+				animQueueMu.Unlock()
+				return
 			}
-			return
 		}
+		animQueueMu.Unlock()
+		return
+	retry:
 	}
 }
 
 func StartAnim_Queue(esn string) {
-	// If an animation is already playing, wait for it to finish first.
-	for i, q := range AnimationQueues {
-		if q.ESN == esn {
-			if q.AnimCurrentlyPlaying {
-				// Snapshot so we wait on the current channel, not a future one.
-				done := AnimationQueues[i].AnimDone
-				<-done // StopAnim_Queue closes this, waking ALL waiters at once
+	for {
+		animQueueMu.Lock()
+		idx := -1
+		for i, q := range AnimationQueues {
+			if q.ESN == esn {
+				idx = i
+				break
 			}
-			// Prepare a fresh channel for this animation's completion signal,
-			// and mark it as playing regardless of which path we took above.
-			AnimationQueues[i].AnimDone = make(chan struct{})
-			AnimationQueues[i].AnimCurrentlyPlaying = true
-			return
 		}
+		if idx >= 0 && AnimationQueues[idx].AnimCurrentlyPlaying {
+			// Previous animation still running: wait without holding the lock,
+			// then loop back and re-check (another goroutine may have claimed it).
+			done := AnimationQueues[idx].AnimDone
+			animQueueMu.Unlock()
+			<-done
+			continue
+		}
+		// Slot is free (or ESN is new): claim it.
+		if idx >= 0 {
+			AnimationQueues[idx].AnimDone = make(chan struct{})
+			AnimationQueues[idx].AnimCurrentlyPlaying = true
+		} else {
+			AnimationQueues = append(AnimationQueues, AnimationQueue{
+				ESN:                  esn,
+				AnimCurrentlyPlaying: true,
+				AnimDone:             make(chan struct{}),
+			})
+		}
+		animQueueMu.Unlock()
+		return
 	}
-	var aq AnimationQueue
-	aq.AnimCurrentlyPlaying = true
-	aq.AnimDone = make(chan struct{})
-	aq.ESN = esn
-	AnimationQueues = append(AnimationQueues, aq)
 }
 
 func StopAnim_Queue(esn string) {
+	animQueueMu.Lock()
+	defer animQueueMu.Unlock()
 	for i, q := range AnimationQueues {
 		if q.ESN == esn {
-			// Guard against double-close (close of a closed channel panics).
 			if AnimationQueues[i].AnimCurrentlyPlaying {
 				AnimationQueues[i].AnimCurrentlyPlaying = false
 				close(AnimationQueues[i].AnimDone) // broadcasts to ALL waiters simultaneously
 			}
+			return
 		}
 	}
 }

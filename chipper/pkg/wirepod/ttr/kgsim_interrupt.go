@@ -80,6 +80,7 @@ func InterruptKGSimWhenTouchedOrWaked(rob *vector.Vector, stop chan bool, stopSt
 			if stopResponse {
 				stop <- true
 				time.Sleep(time.Second / 4)
+				strm.CloseSend()
 				return true
 			}
 			if stopFunc {
