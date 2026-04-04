@@ -523,8 +523,8 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 		// 	)
 		// 	time.Sleep(time.Millisecond * 3300)
 		// }
+		close(stopStop)
 		if !interrupted {
-			stopStop <- true
 			stop <- true
 		}
 	}

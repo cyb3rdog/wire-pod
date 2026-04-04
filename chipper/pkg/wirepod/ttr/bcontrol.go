@@ -46,26 +46,18 @@ func sayText(robot *vector.Vector, text string) {
 					break
 				}
 			}
-
-			for {
-				select {
-				case <-stop:
-					if err := r.Send(
-						&vectorpb.BehaviorControlRequest{
-							RequestType: &vectorpb.BehaviorControlRequest_ControlRelease{
-								ControlRelease: &vectorpb.ControlRelease{},
-							},
-						},
-					); err != nil {
-						log.Println(err)
-						return
-					}
-					return
-				default:
-					continue
-				}
+			
+			<-stop
+			if err := r.Send(
+				&vectorpb.BehaviorControlRequest{
+					RequestType: &vectorpb.BehaviorControlRequest_ControlRelease{
+						ControlRelease: &vectorpb.ControlRelease{},
+					},
+				},
+			); err != nil {
+				log.Println(err)
+				return
 			}
-			// * end - modified from official vector-go-sdk
 		}()
 		for range start {
 			robot.Conn.SayText(
@@ -96,19 +88,19 @@ func BControl(robot *vector.Vector, ctx context.Context, start, stop chan bool) 
 			ctx,
 		)
 		if err != nil {
-			logger.Println(err)
+			logger.Println("BControl: failed to open behavior control stream: " + err.Error())
 			return
 		}
 
 		if err := r.Send(controlRequest); err != nil {
-			logger.Println(err)
+			logger.Println("BControl: failed to send control request: " + err.Error())
 			return
 		}
 
 		for {
 			ctrlresp, err := r.Recv()
 			if err != nil {
-				logger.Println(err)
+				logger.Println("BControl: error waiting for control grant: " + err.Error())
 				return
 			}
 			if ctrlresp.GetControlGrantedResponse() != nil {
@@ -117,25 +109,17 @@ func BControl(robot *vector.Vector, ctx context.Context, start, stop chan bool) 
 			}
 		}
 
-		for {
-			select {
-			case <-stop:
-				logger.Println("KGSim: releasing behavior control (interrupt)")
-				if err := r.Send(
-					&vectorpb.BehaviorControlRequest{
-						RequestType: &vectorpb.BehaviorControlRequest_ControlRelease{
-							ControlRelease: &vectorpb.ControlRelease{},
-						},
-					},
-				); err != nil {
-					logger.Println(err)
-					return
-				}
-				return
-			default:
-				continue
-			}
+		<-stop
+		logger.Println("KGSim: releasing behavior control")
+		if err := r.Send(
+			&vectorpb.BehaviorControlRequest{
+				RequestType: &vectorpb.BehaviorControlRequest_ControlRelease{
+					ControlRelease: &vectorpb.ControlRelease{},
+				},
+			},
+		); err != nil {
+			logger.Println("BControl: behavior control stream closed before release (expected on interrupt): " + err.Error())
+			return
 		}
-		// * end - modified from official vector-go-sdk
 	}()
 }
