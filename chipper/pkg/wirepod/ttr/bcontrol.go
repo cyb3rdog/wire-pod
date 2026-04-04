@@ -58,6 +58,7 @@ func sayText(robot *vector.Vector, text string) {
 				log.Println(err)
 				return
 			}
+			// * end - modified from official vector-go-sdk
 		}()
 		for range start {
 			robot.Conn.SayText(
@@ -121,5 +122,6 @@ func BControl(robot *vector.Vector, ctx context.Context, start, stop chan bool) 
 			logger.Println("BControl: behavior control stream closed before release (expected on interrupt): " + err.Error())
 			return
 		}
+		// * end - modified from official vector-go-sdk
 	}()
 }
