@@ -422,13 +422,8 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 	}()
 	var TTSLoopAnimation string
 	var TTSGetinAnimation string
-	if isKG {
-		TTSLoopAnimation = "anim_knowledgegraph_answer_01"
-		TTSGetinAnimation = "anim_knowledgegraph_searching_getout_01"
-	} else {
-		TTSLoopAnimation = "anim_tts_loop_02"
-		TTSGetinAnimation = "anim_getin_tts_01"
-	}
+	TTSLoopAnimation = "anim_tts_loop_02"
+	TTSGetinAnimation = "anim_getin_tts_01"
 
 	stopTTSLoopCh := make(chan struct{})
 	TTSLoopStopped := make(chan bool)
