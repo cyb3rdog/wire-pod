@@ -430,7 +430,7 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 		TTSGetinAnimation = "anim_getin_tts_01"
 	}
 
-	var stopTTSLoop bool
+	stopTTSLoopCh := make(chan struct{})
 	TTSLoopStopped := make(chan bool)
 	for range start {
 		if isKG {
@@ -453,9 +453,11 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 		if !vars.APIConfig.Knowledge.CommandsEnable {
 			go func() {
 				for {
-					if stopTTSLoop {
+					select {
+					case <-stopTTSLoopCh:
 						TTSLoopStopped <- true
-						break
+						return
+					default:
 					}
 					robot.Conn.PlayAnimation(
 						ctx,
@@ -503,7 +505,7 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 			numInResp = numInResp + 1
 		}
 		if !vars.APIConfig.Knowledge.CommandsEnable {
-			stopTTSLoop = true
+			close(stopTTSLoopCh)
 			for range TTSLoopStopped {
 				break
 			}
@@ -610,8 +612,8 @@ func KGSim(esn string, textToSay string) error {
 			// * end - modified from official vector-go-sdk
 		}()
 
-		var stopTTSLoop bool
-		var TTSLoopStopped bool
+		stopTTSLoopCh := make(chan struct{})
+		TTSLoopStopped := make(chan bool)
 		for range start {
 			time.Sleep(time.Millisecond * 300)
 			robot.Conn.PlayAnimation(
@@ -625,9 +627,11 @@ func KGSim(esn string, textToSay string) error {
 			)
 			go func() {
 				for {
-					if stopTTSLoop {
-						TTSLoopStopped = true
-						break
+					select {
+					case <-stopTTSLoopCh:
+						TTSLoopStopped <- true
+						return
+					default:
 					}
 					robot.Conn.PlayAnimation(
 						ctx,
@@ -640,6 +644,7 @@ func KGSim(esn string, textToSay string) error {
 					)
 				}
 			}()
+			var stopSent bool
 			textToSaySplit := strings.Split(textToSay, ". ")
 			for _, str := range textToSaySplit {
 				_, err := robot.Conn.SayText(
@@ -652,21 +657,21 @@ func KGSim(esn string, textToSay string) error {
 				)
 				if err != nil {
 					logger.Println("KG SayText error: " + err.Error())
+					// Release behavior control immediately on error; guard against
+					// the second stop send below so we don't block forever with no receiver.
 					stop <- true
+					stopSent = true
 					break
 				}
 			}
-			stopTTSLoop = true
-			for {
-				if TTSLoopStopped {
-					break
-				} else {
-					time.Sleep(time.Millisecond * 10)
-				}
+			close(stopTTSLoopCh)
+			for range TTSLoopStopped {
+				break
 			}
 			time.Sleep(time.Millisecond * 100)
-			//time.Sleep(time.Millisecond * 3300)
-			stop <- true
+			if !stopSent {
+				stop <- true
+			}
 		}
 	}()
 	return nil

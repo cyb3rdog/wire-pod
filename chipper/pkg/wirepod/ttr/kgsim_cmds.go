@@ -29,8 +29,8 @@ const (
 	// arg: now
 	ActionGetImage   = 3
 	ActionNewRequest = 4
-	// arg: sound file
-	ActionPlaySound = 4
+	// arg: sound file	
+	ActionPlaySound = 5
 )
 
 var animationMap [][2]string = [][2]string{
@@ -151,7 +151,7 @@ func ModelIsSupported(cmd LLMCommand, model string) bool {
 }
 
 func CreatePrompt(origPrompt string, model string, isKG bool) string {
-	prompt := origPrompt + "\n\n" + "Keep in mind, you are running ON a PHYSICAL Anki Vector robot. User input comes from speech-to-text software, so respond accordingly. Your responses are processed by Vector's text-to-speech software. No special characters, especially these: & ^ * # @ - . No lists. No formatting. Always respond in Plain text."
+	prompt := origPrompt + "\n\n" + "Keep in mind, you are running ON a PHYSICAL Anki Vector robot! User input comes from speech-to-text software, so respond accordingly. Your responses are processed by Vector's text-to-speech software. No special characters allowed, especially these: & ^ * # @ - ' \"  . No lists. No formatting. Always respond in Plain text!"
 	if vars.APIConfig.Knowledge.CommandsEnable {
 		prompt = prompt + "\n\n" + "You have a set of commands. If you include an emoji, I will make you start over. If you want to use a command but it doesn't exist or your desired parameter isn't in the list, avoid using the command. The format is {{command||parameter}}. You can embed these in sentences. Example: \"User: How are you feeling? | Response: \"{{playAnimationWI||sad}} I'm feeling sad...\". Square brackets ([]) are not valid.\n\nUse the playAnimation or playAnimationWI commands if you want to express emotion! You are very animated and good at following instructions. Animation takes precendence over words.\n\nHere is every valid command:"
 		for _, cmd := range ValidLLMCommands {
@@ -200,6 +200,10 @@ func GetActionsFromString(input string) []RobotAction {
 		}
 
 		cmdPlusParam := strings.Split(strings.TrimSpace(strings.Split(spl, "}}")[0]), "||")
+		if len(cmdPlusParam) < 2 {
+			logger.Println("LLM generated malformed command (missing || separator): " + spl)
+			continue
+		}
 		cmd := strings.TrimSpace(cmdPlusParam[0])
 		param := strings.TrimSpace(cmdPlusParam[1])
 		action := CmdParamToAction(cmd, param)
@@ -533,6 +537,11 @@ func DoGetImage(msgs []openai.ChatCompletionMessage, param string, robot *vector
 		for {
 			response, err := stream.Recv()
 			if errors.Is(err, io.EOF) {
+				if len(fullRespSlice) == 0 {
+					logger.Println("Vision LLM returned no response")
+					closeStreamDone()
+					return
+				}
 				isDone = true
 				newStr := fullRespSlice[0]
 				for i, str := range fullRespSlice {
