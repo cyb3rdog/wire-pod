@@ -284,7 +284,7 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 			}
 		} else {
 			if isKG {
-				kgStopLooping = true
+				stopKGAnim()
 				for range kgReadyToAnswer {
 					break
 				}
