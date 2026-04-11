@@ -42,25 +42,25 @@ if [[ ${STT_SERVICE} == "leopard" ]]; then
     if [[ -f ./chipper ]]; then
         ./chipper
     else
-        /usr/local/go/bin/go run -tags $GOTAGS -ldflags="${GOLDFLAGS}" cmd/leopard/main.go
+        go run -tags $GOTAGS -ldflags="${GOLDFLAGS}" cmd/leopard/main.go
     fi
     elif [[ ${STT_SERVICE} == "rhino" ]]; then
     if [[ -f ./chipper ]]; then
         ./chipper
     else
-        /usr/local/go/bin/go run -tags $GOTAGS -ldflags="${GOLDFLAGS}" cmd/experimental/rhino/main.go
+        go run -tags $GOTAGS -ldflags="${GOLDFLAGS}" cmd/experimental/rhino/main.go
     fi
     elif [[ ${STT_SERVICE} == "houndify" ]]; then
     if [[ -f ./chipper ]]; then
         ./chipper
     else
-        /usr/local/go/bin/go run -tags $GOTAGS -ldflags="${GOLDFLAGS}" cmd/experimental/houndify/main.go
+        go run -tags $GOTAGS -ldflags="${GOLDFLAGS}" cmd/experimental/houndify/main.go
     fi
     elif [[ ${STT_SERVICE} == "whisper" ]]; then
     if [[ -f ./chipper ]]; then
         ./chipper
     else
-        /usr/local/go/bin/go run -tags $GOTAGS -ldflags="${GOLDFLAGS}" cmd/experimental/whisper/main.go
+        go run -tags $GOTAGS -ldflags="${GOLDFLAGS}" cmd/experimental/whisper/main.go
     fi
     elif [[ ${STT_SERVICE} == "whisper.cpp" ]]; then
     if [[ -f ./chipper ]]; then
@@ -78,9 +78,9 @@ if [[ ${STT_SERVICE} == "leopard" ]]; then
         export CGO_CFLAGS="-I$(pwd)/../whisper.cpp -I$(pwd)/../whisper.cpp/include -I$(pwd)/../whisper.cpp/ggml/include"
         if [[ ${UNAME} == *"Darwin"* ]]; then
             export GGML_METAL_PATH_RESOURCES="../whisper.cpp"
-            /usr/local/go/bin/go run -tags $GOTAGS -ldflags "-extldflags '-framework Foundation -framework Metal -framework MetalKit'" cmd/experimental/whisper.cpp/main.go
+            go run -tags $GOTAGS -ldflags "-extldflags '-framework Foundation -framework Metal -framework MetalKit'" cmd/experimental/whisper.cpp/main.go
         else
-            /usr/local/go/bin/go run -tags $GOTAGS -ldflags="${GOLDFLAGS}" cmd/experimental/whisper.cpp/main.go
+            go run -tags $GOTAGS -ldflags="${GOLDFLAGS}" cmd/experimental/whisper.cpp/main.go
         fi
     fi
     elif [[ ${STT_SERVICE} == "vosk" ]]; then
@@ -95,7 +95,7 @@ if [[ ${STT_SERVICE} == "leopard" ]]; then
         export CGO_CFLAGS="-I$HOME/.vosk/libvosk -I/root/.vosk/libvosk"
         export CGO_LDFLAGS="-L$HOME/.vosk/libvosk -L/root/.vosk/libvosk -lvosk -ldl -lpthread"
         export LD_LIBRARY_PATH="/root/.vosk/libvosk:$HOME/.vosk/libvosk:$LD_LIBRARY_PATH"
-        /usr/local/go/bin/go run -tags $GOTAGS -ldflags="${GOLDFLAGS}" -exec "env DYLD_LIBRARY_PATH=$HOME/.vosk/libvosk" cmd/vosk/main.go
+        go run -tags $GOTAGS -ldflags="${GOLDFLAGS}" -exec "env DYLD_LIBRARY_PATH=$HOME/.vosk/libvosk" cmd/vosk/main.go
     fi
 else
     if [[ -f ./chipper ]]; then
@@ -107,6 +107,6 @@ else
         export CGO_LDFLAGS="-L$HOME/.coqui/"
         export CGO_CXXFLAGS="-I$HOME/.coqui/"
         export LD_LIBRARY_PATH="$HOME/.coqui/:$LD_LIBRARY_PATH"
-        /usr/local/go/bin/go run -tags $GOTAGS -ldflags="${GOLDFLAGS}" cmd/coqui/main.go
+        go run -tags $GOTAGS -ldflags="${GOLDFLAGS}" cmd/coqui/main.go
     fi
 fi
