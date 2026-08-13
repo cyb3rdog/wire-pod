@@ -47,12 +47,6 @@ if [[ ${STT_SERVICE} == "leopard" ]]; then
     else
         go run -tags $GOTAGS -ldflags="${GOLDFLAGS}" cmd/leopard/main.go
     fi
-    elif [[ ${STT_SERVICE} == "rhino" ]]; then
-    if [[ -f ./chipper ]]; then
-        ./chipper
-    else
-        go run -tags $GOTAGS -ldflags="${GOLDFLAGS}" cmd/experimental/rhino/main.go
-    fi
     elif [[ ${STT_SERVICE} == "houndify" ]]; then
     if [[ -f ./chipper ]]; then
         ./chipper

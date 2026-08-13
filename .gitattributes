@@ -1,0 +1,7 @@
+# Normalize line endings so shell scripts checked out on Windows keep
+# LF endings (the dockerfile's build previously worked around this with
+# a sed pass over every *.sh file at image-build time).
+* text=auto eol=lf
+
+*.sh text eol=lf
+*.go text eol=lf
