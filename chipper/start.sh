@@ -3,7 +3,7 @@
 UNAME=$(uname -a)
 COMMIT_HASH="$(git rev-parse --short HEAD)"
 
-if [[ $EUID -ne 0 ]]; then
+if [[ $EUID -ne 0 ]] && [[ -z "${WIREPOD_IN_DOCKER:-}" ]]; then
     echo "This script must be run as root. sudo ./start.sh"
     exit 1
 fi

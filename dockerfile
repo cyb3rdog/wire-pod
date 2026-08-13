@@ -136,27 +136,31 @@ ARG COMMIT_SHA=unknown
 
 ENV DEBIAN_FRONTEND=noninteractive \
     WIREPOD_DATA_DIR=/data \
+    WIREPOD_IN_DOCKER=1 \
     LD_LIBRARY_PATH=/opt/vosk/libvosk
 
-RUN apt-get update \ 
-    && apt-get install -y --no-install-recommends \ 
-        avahi-daemon \ 
-        avahi-utils \ 
-        bash \ 
-        ca-certificates \ 
-        curl \ 
-        git \ 
-        iproute2 \ 
-        libasound2 \ 
-        libatomic1 \ 
-        libopus0 \ 
-        libopusfile0 \ 
-        libsodium23 \ 
-        libsox3 \ 
-        tzdata \ 
-        unzip \ 
-        wget \ 
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        avahi-daemon \
+        avahi-utils \
+        bash \
+        ca-certificates \
+        curl \
+        git \
+        iproute2 \
+        libasound2 \
+        libatomic1 \
+        libcap2-bin \
+        libopus0 \
+        libopusfile0 \
+        libsodium23 \
+        libsox3 \
+        tzdata \
+        unzip \
+        wget \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 wirepod \
+    && useradd --uid 10001 --gid wirepod --create-home --shell /usr/sbin/nologin wirepod
 
 WORKDIR /opt/wire-pod
 
@@ -165,17 +169,25 @@ COPY --from=builder /src /opt/wire-pod
 COPY --from=builder /build/chipper /opt/wire-pod/chipper/chipper
 COPY --from=builder /build/.wirepod-version /opt/wire-pod/.wirepod-version
 
+# CAP_NET_BIND_SERVICE lets the unprivileged "wirepod" user (set below)
+# bind the privileged 80/443 ports without the process needing to run
+# as root.
 RUN chmod +x \
         /opt/wire-pod/setup.sh \
         /opt/wire-pod/update.sh \
         /opt/wire-pod/chipper/start.sh \
-        /opt/wire-pod/docker/entrypoint.sh
+        /opt/wire-pod/docker/entrypoint.sh \
+    && setcap 'cap_net_bind_service=+ep' /opt/wire-pod/chipper/chipper \
+    && mkdir -p /data \
+    && chown -R wirepod:wirepod /opt/wire-pod /data /home/wirepod
 
 VOLUME ["/data"]
 
 EXPOSE 80 443 8080 8084
 
 LABEL org.opencontainers.image.revision="${COMMIT_SHA}"
+
+USER wirepod
 
 ENTRYPOINT ["/opt/wire-pod/docker/entrypoint.sh"]
 CMD ["/opt/wire-pod/chipper/start.sh"]
