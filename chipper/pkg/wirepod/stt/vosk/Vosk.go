@@ -419,6 +419,7 @@ func getRec(withGrm bool) (*vosk.VoskRecognizer, int) {
 		}
 	}
 	// Still nothing available - create emergency recognizer
+	recsmu.Unlock()
 	goto createNew
 
 createNew:

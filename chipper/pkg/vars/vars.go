@@ -379,11 +379,16 @@ func LoadIntents() ([]JsonIntent, error) {
 	return jsonIntents, err
 }
 
+// writeJdocsLocked writes BotJdocs to disk. Caller must hold botJdocsMu.
+func writeJdocsLocked() {
+	writeBytes, _ := json.Marshal(BotJdocs)
+	os.WriteFile(JdocsPath, writeBytes, 0644)
+}
+
 func WriteJdocs() {
 	botJdocsMu.Lock()
 	defer botJdocsMu.Unlock()
-	writeBytes, _ := json.Marshal(BotJdocs)
-	os.WriteFile(JdocsPath, writeBytes, 0644)
+	writeJdocsLocked()
 }
 
 // removes a bot from jdocs file
@@ -397,7 +402,7 @@ func DeleteData(thing string) {
 		}
 	}
 	BotJdocs = newdocs
-	WriteJdocs()
+	writeJdocsLocked()
 }
 
 func GetJdoc(thing, jdocname string) (AJdoc, bool) {
@@ -436,9 +441,7 @@ func AddJdoc(thing string, name string, jdoc AJdoc) uint64 {
 		newbot.Jdoc = jdoc
 		BotJdocs = append(BotJdocs, newbot)
 	}
-	// WriteJdocs acquires lock again - we need internalWriteJdocs
-	writeBytes, _ := json.Marshal(BotJdocs)
-	os.WriteFile(JdocsPath, writeBytes, 0644)
+	writeJdocsLocked()
 	return latestVersion
 }
 
