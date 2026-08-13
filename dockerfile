@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.6
 
-FROM --platform=$BUILDPLATFORM golang:1.22.4-bookworm AS builder
+FROM golang:1.22.4-bookworm AS builder
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -64,11 +64,18 @@ COPY . .
 RUN find . -type f -name '*.sh' -exec sed -i 's/\r$//' {} +
 
 RUN set -eux; \
-    case "${TARGETARCH}" in \
+    ARCH="${TARGETARCH:-}"; \
+    if [ -z "${ARCH}" ]; then \
+        case "$(dpkg --print-architecture)" in \
+            armhf|armel) ARCH="arm" ;; \
+            *) ARCH="$(dpkg --print-architecture)" ;; \
+        esac; \
+    fi; \
+    case "${ARCH}" in \
         amd64) VOSK_PKG="vosk-linux-x86_64-${VOSK_VERSION}.zip" ;; \
         arm64) VOSK_PKG="vosk-linux-aarch64-${VOSK_VERSION}.zip" ;; \
         arm) VOSK_PKG="vosk-linux-armv7l-${VOSK_VERSION}.zip" ;; \
-        *) echo "Unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+        *) echo "Unsupported architecture: ${ARCH}" >&2; exit 1 ;; \
     esac; \
     mkdir -p /opt/vosk; \
     curl -fsSL -o /tmp/vosk.zip "https://github.com/alphacep/vosk-api/releases/download/v${VOSK_VERSION}/${VOSK_PKG}"; \
