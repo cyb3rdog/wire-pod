@@ -22,8 +22,6 @@ import (
 	botsetup "github.com/kercre123/wire-pod/chipper/pkg/wirepod/setup"
 )
 
-var SttInitFunc func() error
-
 func apiHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Headers", "*")

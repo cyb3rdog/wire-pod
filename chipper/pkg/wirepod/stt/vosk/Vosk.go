@@ -525,18 +525,6 @@ func STT(req sr.SpeechRequest) (string, error) {
 	return transcribedText, nil
 }
 
-// GetThermalStats returns current thermal management statistics
-func GetThermalStats() map[string]interface{} {
-	return map[string]interface{}{
-		"total_requests":   totalRequests.Load(),
-		"total_sleep_time": totalSleepTime.Load(),
-		"current_pressure": thermalPressure.Load(),
-		"is_sleeping":      isSleeping.Load(),
-		"cpu_temp":         GetCPUTemperature(),
-		"idle_time":        CalculateIdleTime().Seconds(),
-	}
-}
-
 // runTest remains unchanged from original
 func runTest() {
 	logger.Println("Running recognizer test")

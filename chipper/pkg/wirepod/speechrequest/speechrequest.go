@@ -89,26 +89,6 @@ func SplitVAD(buf []byte) [][]byte {
 	return chunk
 }
 
-func BytesToIntVAD(stream opus.OggStream, data []byte, die bool, isOpus bool) [][]byte {
-	// detect if data is pcm or opus
-	if die {
-		return nil
-	}
-	if isOpus {
-		// opus
-		n, err := stream.Decode(data)
-		if err != nil {
-			logger.Println(err)
-		}
-		byteArray := SplitVAD(n)
-		return byteArray
-	} else {
-		// pcm
-		byteArray := SplitVAD(data)
-		return byteArray
-	}
-}
-
 // Uses VAD to detect when the user stops speaking
 func (req *SpeechRequest) DetectEndOfSpeech() (bool, bool) {
 	// changes InactiveFrames and ActiveFrames in req

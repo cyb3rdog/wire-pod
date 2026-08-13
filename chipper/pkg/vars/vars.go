@@ -38,7 +38,6 @@ var (
 	JdocsPath         string = "./jdocs/jdocs.json"
 	JdocsDir          string = "./jdocs"
 	CustomIntentsPath string = "./customIntents.json"
-	BotConfigsPath    string = "./botConfig.json"
 	BotInfoPath       string = "./jdocs/botSdkInfo.json"
 	BotInfoName       string = "botSdkInfo.json"
 	PodName           string = "wire-pod"
@@ -101,22 +100,6 @@ func SetRememberedChats(chats []RememberedChat) {
 	rememberedChatsMu.Lock()
 	defer rememberedChatsMu.Unlock()
 	RememberedChats = chats
-}
-
-func AppendRememberedChat(esn string, chat []openai.ChatCompletionMessage) {
-	rememberedChatsMu.Lock()
-	defer rememberedChatsMu.Unlock()
-	for i, achat := range RememberedChats {
-		if achat.ESN == esn {
-			RememberedChats[i].Chats = append(RememberedChats[i].Chats, chat...)
-			return
-		}
-	}
-	// New ESN, add new entry
-	RememberedChats = append(RememberedChats, RememberedChat{
-		ESN:   esn,
-		Chats: chat,
-	})
 }
 
 func UpdateRememberedChat(esn string, chat []openai.ChatCompletionMessage) {
@@ -263,7 +246,6 @@ func Init() {
 		JdocsDir = join(podDir, JdocsDir)
 		JdocsPath = JdocsDir + "/jdocs.json"
 		CustomIntentsPath = join(podDir, CustomIntentsPath)
-		BotConfigsPath = join(podDir, BotConfigsPath)
 		BotInfoPath = JdocsDir + "/" + BotInfoName
 		VoskModelPath = join(podDir, "./vosk/models/")
 		WhisperModelPath = join(filepath.Dir(appDir), "/../Frameworks/chipper/whisper.cpp/models/") // macos
