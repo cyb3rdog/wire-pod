@@ -64,69 +64,97 @@ check_prerequisites() {
 
 # Build the binary
 build_binary() {
-    print_status "Building $BINARY_NAME..."
-    
+    # Source config
+    if [[ -f source.sh ]]; then
+        source source.sh
+    fi
+
+    # Matches the default in start.sh/setup.sh/dockerfile -- vosk is the
+    # backend the Docker image actually ships, so it's the right default
+    # here too rather than silently building a different STT engine.
+    STT_SERVICE="${STT_SERVICE:-vosk}"
+
+    print_status "Building $BINARY_NAME (STT_SERVICE=$STT_SERVICE)..."
+
     # Get commit hash
     if command -v git &> /dev/null && [ -d ".git" ]; then
         COMMIT_HASH="$(git rev-parse --short HEAD)"
     else
         COMMIT_HASH="unknown"
     fi
-    
+
     # Clean previous build
     rm -f "$BINARY_NAME"
-    
-    # Source config
-    if [[ -f source.sh ]]; then 
-        source source.sh 
-    fi
-    
-    # Build for leopard (STT_SERVICE)
-    go build -v -tags "${GOTAGS:-nolibopusfile}" -ldflags "${GOLDFLAGS:--X 'github.com/kercre123/wire-pod/chipper/pkg/vars.CommitSHA=${COMMIT_HASH}' -s -w}" -o "$BINARY_NAME" ./cmd/leopard
-    
+
+    # Per-backend CGO setup, matching the same env vars start.sh/setup.sh
+    # use when building this backend from source.
+    case "$STT_SERVICE" in
+        vosk)
+            CMD_PATH="./cmd/vosk"
+            export CGO_ENABLED=1
+            export CGO_CFLAGS="-I$HOME/.vosk/libvosk"
+            export CGO_LDFLAGS="-L$HOME/.vosk/libvosk -lvosk -ldl -lpthread"
+            export LD_LIBRARY_PATH="$HOME/.vosk/libvosk:${LD_LIBRARY_PATH:-}"
+            ;;
+        leopard)
+            CMD_PATH="./cmd/leopard"
+            ;;
+        houndify)
+            CMD_PATH="./cmd/experimental/houndify"
+            ;;
+        whisper)
+            CMD_PATH="./cmd/experimental/whisper"
+            ;;
+        whisper.cpp)
+            CMD_PATH="./cmd/experimental/whisper.cpp"
+            export C_INCLUDE_PATH="../whisper.cpp"
+            export LIBRARY_PATH="../whisper.cpp"
+            export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}:$(pwd)/../whisper.cpp:$(pwd)/../whisper.cpp/build:$(pwd)/../whisper.cpp/build_go/src:$(pwd)/../whisper.cpp/build_go/ggml/src"
+            export CGO_LDFLAGS="-L$(pwd)/../whisper.cpp -L$(pwd)/../whisper.cpp/build -L$(pwd)/../whisper.cpp/build/src -L$(pwd)/../whisper.cpp/build_go/ggml/src -L$(pwd)/../whisper.cpp/build_go/src"
+            export CGO_CFLAGS="-I$(pwd)/../whisper.cpp -I$(pwd)/../whisper.cpp/include -I$(pwd)/../whisper.cpp/ggml/include"
+            ;;
+        coqui)
+            CMD_PATH="./cmd/coqui"
+            export CGO_LDFLAGS="-L$HOME/.coqui/"
+            export CGO_CXXFLAGS="-I$HOME/.coqui/"
+            export LD_LIBRARY_PATH="$HOME/.coqui/:${LD_LIBRARY_PATH:-}"
+            ;;
+        *)
+            print_error "Unknown STT_SERVICE: $STT_SERVICE"
+            exit 1
+            ;;
+    esac
+
+    go build -v -tags "${GOTAGS:-nolibopusfile}" -ldflags "${GOLDFLAGS:--X 'github.com/kercre123/wire-pod/chipper/pkg/vars.CommitSHA=${COMMIT_HASH}' -s -w}" -o "$BINARY_NAME" "$CMD_PATH"
+
     if [ ! -f "$BINARY_NAME" ]; then
         print_error "Build failed - no binary produced"
         exit 1
     fi
-    
+
     SIZE=$(du -h "$BINARY_NAME" | cut -f1)
     print_success "Build successful: $BINARY_NAME ($SIZE)"
 }
 
-# Create systemd service file
+# Install the checked-in systemd service file
 create_service_file() {
-    print_status "Creating systemd service file..."
-    
-    cat > "/tmp/${SERVICE_NAME}.service" << 'EOF'
-[Unit]
-Description=wire-pod chipper STT Service
-Wants=network-online.target
-After=network.target network-online.target
+    print_status "Installing systemd service file..."
 
-[Service]
-Type=simple
-WorkingDirectory=/etc/wire-pod
-ExecStartPre=/usr/sbin/iw dev wlan0 set power_save off
-ExecStartPre=/bin/systemctl restart zramswap
-ExecStart=/usr/bin/wire-pod
-Restart=on-failure
-RestartSec=5
-StandardOutput=journal
-StandardError=journal
+    if [[ ! -f "$SCRIPT_DIR/wire-pod.service" ]]; then
+        print_error "wire-pod.service not found next to this script"
+        exit 1
+    fi
 
-Environment="GOMAXPROCS=1"
-
-[Install]
-WantedBy=multi-user.target
-EOF
     # Create config directory
     mkdir -p /etc/wire-pod
-    
-    # Move service file to final location
-    mv "/tmp/${SERVICE_NAME}.service" "$SERVICE_FILE"
+
+    # Install the repo's own unit rather than regenerating one here --
+    # keeping a second, hand-written copy in sync with chipper/wire-pod.service
+    # is exactly how the two drifted from each other in the first place.
+    cp "$SCRIPT_DIR/wire-pod.service" "$SERVICE_FILE"
     chmod 644 "$SERVICE_FILE"
-    
-    print_success "Service file created at $SERVICE_FILE"
+
+    print_success "Service file installed at $SERVICE_FILE"
 }
 
 # Install binary
