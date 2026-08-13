@@ -2,9 +2,9 @@
 
 FROM golang:1.22.4-bookworm AS builder
 
-ARG TARGETOS
-ARG TARGETARCH
-ARG TARGETVARIANT
+ARG TARGETOS=
+ARG TARGETARCH=
+ARG TARGETVARIANT=
 ARG VOSK_VERSION=0.3.45
 ARG COMMIT_SHA=unknown
 
@@ -30,16 +30,16 @@ RUN set -eux; \
         g++-aarch64-linux-gnu \ 
         gcc-arm-linux-gnueabihf \ 
         g++-arm-linux-gnueabihf; \ 
-    if [ "${TARGETARCH}" = "arm64" ]; then \ 
-        dpkg --add-architecture arm64; \ 
-        apt-get update; \ 
-        apt-get install -y --no-install-recommends \ 
-            libasound2-dev:arm64 \ 
-            libopus-dev:arm64 \ 
-            libopusfile-dev:arm64 \ 
-            libsox-dev:arm64 \ 
-            libsodium-dev:arm64; \ 
-    elif [ "${TARGETARCH}" = "arm" ]; then \ 
+    if [ "${TARGETARCH:-}" = "arm64" ]; then \
+        dpkg --add-architecture arm64; \
+        apt-get update; \
+        apt-get install -y --no-install-recommends \
+            libasound2-dev:arm64 \
+            libopus-dev:arm64 \
+            libopusfile-dev:arm64 \
+            libsox-dev:arm64 \
+            libsodium-dev:arm64; \
+    elif [ "${TARGETARCH:-}" = "arm" ]; then \
         dpkg --add-architecture armhf; \ 
         apt-get update; \ 
         apt-get install -y --no-install-recommends \ 
@@ -91,16 +91,17 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     if [ "${BUILD_COMMIT}" = "unknown" ] || [ -z "${BUILD_COMMIT}" ]; then \
         BUILD_COMMIT=$(git rev-parse --short HEAD || echo "dev"); \
     fi; \
-    GOOS_VALUE="${TARGETOS}"; \
-    GOARCH_VALUE="${TARGETARCH}"; \
+    GOOS_VALUE="${TARGETOS:-}"; \
+    GOARCH_VALUE="${TARGETARCH:-}"; \
     if [ -z "${GOOS_VALUE}" ]; then \
         GOOS_VALUE=$(go env GOOS); \
     fi; \
     if [ -z "${GOARCH_VALUE}" ]; then \
         GOARCH_VALUE=$(go env GOARCH); \
     fi; \
-    if [ "${TARGETARCH}" = "arm" ]; then \
-        GOARM_VALUE="${TARGETVARIANT#v}"; \
+    if [ "${TARGETARCH:-}" = "arm" ]; then \
+        GOARM_RAW="${TARGETVARIANT:-}"; \
+        GOARM_VALUE="${GOARM_RAW#v}"; \
         if [ -z "${GOARM_VALUE}" ]; then GOARM_VALUE=7; fi; \
         export GOARM=${GOARM_VALUE}; \
     fi; \
