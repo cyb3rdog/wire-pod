@@ -2,6 +2,7 @@ package initwirepod
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"sync"
@@ -59,6 +60,9 @@ var limiter = newRateLimiter()
 func ChipperHTTPApi(w http.ResponseWriter, r *http.Request) {
 	// Rate limiting
 	ip := r.RemoteAddr
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		ip = host
+	}
 	if !limiter.allow(ip) {
 		http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
 		return

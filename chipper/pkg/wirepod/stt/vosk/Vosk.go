@@ -38,17 +38,17 @@ const (
 	TempThresholdCritical = 80.0
 
 	// Idle detection settings
-	IdleCheckInterval = 5 * time.Second   // How often to check for idle
-	IdleTimeout       = 30 * time.Second   // Time without activity before sleep
-	MinSleepDuration  = 2 * time.Second    // Minimum sleep when idle
-	MaxSleepDuration  = 10 * time.Second   // Maximum sleep when idle
+	IdleCheckInterval = 5 * time.Second  // How often to check for idle
+	IdleTimeout       = 30 * time.Second // Time without activity before sleep
+	MinSleepDuration  = 2 * time.Second  // Minimum sleep when idle
+	MaxSleepDuration  = 10 * time.Second // Maximum sleep when idle
 
 	// CPU throttling settings
-	MaxRecognizersPerPool = 5    // Maximum recognizers to keep in pool
-	ThermalThrottleDelay  = 500 * time.Millisecond  // Delay added under thermal pressure
+	MaxRecognizersPerPool = 5                      // Maximum recognizers to keep in pool
+	ThermalThrottleDelay  = 500 * time.Millisecond // Delay added under thermal pressure
 
 	// Activity tracking
-	ActivityWindowSize = 10  // Number of recent requests to track for pattern analysis
+	ActivityWindowSize = 10 // Number of recent requests to track for pattern analysis
 )
 
 // =============================================================================
@@ -56,19 +56,19 @@ const (
 // =============================================================================
 var (
 	// Thermal state
-	lastRequestTime   time.Time
-	lastActivityTime  time.Time
-	isProcessingLock  sync.Mutex
-	isProcessing      bool
-	isSleeping        atomic.Bool
-	sleepDuration     time.Duration
-	thermalPressure   atomic.Int32  // 0=normal, 1=warm, 2=hot, 3=critical
+	lastRequestTime  time.Time
+	lastActivityTime time.Time
+	isProcessingLock sync.Mutex
+	isProcessing     bool
+	isSleeping       atomic.Bool
+	sleepDuration    time.Duration
+	thermalPressure  atomic.Int32 // 0=normal, 1=warm, 2=hot, 3=critical
 
 	// Activity metrics
-	recentRequests    []time.Time
-	requestMutex      sync.Mutex
-	totalRequests     atomic.Int64
-	totalSleepTime    atomic.Int64
+	recentRequests []time.Time
+	requestMutex   sync.Mutex
+	totalRequests  atomic.Int64
+	totalSleepTime atomic.Int64
 )
 
 // =============================================================================
@@ -120,7 +120,7 @@ func UpdateThermalState() {
 
 	// Log thermal state changes
 	if pressure > 0 {
-		logger.Printf("(Thermal) Temperature: %.1f°C, Pressure: %d", temp, pressure)
+		logger.Println(fmt.Sprintf("(Thermal) Temperature: %.1f°C, Pressure: %d", temp, pressure))
 	}
 }
 
@@ -200,7 +200,7 @@ func SleepIfNeeded() {
 	// Calculate adaptive sleep duration based on recent activity
 	sleepDur := CalculateAdaptiveSleepDuration()
 
-	logger.Printf("(Thermal) Entering idle sleep for %v", sleepDur)
+	logger.Println(fmt.Sprintf("(Thermal) Entering idle sleep for %v", sleepDur))
 
 	isSleeping.Store(true)
 	sleepStart := time.Now()
@@ -211,7 +211,7 @@ func SleepIfNeeded() {
 	totalSleepTime.Add(int64(sleepDuration))
 	isSleeping.Store(false)
 
-	logger.Printf("(Thermal) Exited idle sleep after %v", sleepDuration)
+	logger.Println(fmt.Sprintf("(Thermal) Exited idle sleep after %v", sleepDuration))
 }
 
 // CalculateAdaptiveSleepDuration determines optimal sleep based on activity patterns
@@ -504,8 +504,7 @@ func STT(req sr.SpeechRequest) (string, error) {
 	}
 
 	var jres map[string]interface{}
-	err = json.Unmarshal([]byte(rec.FinalResult()), &jres)
-	if err != nil {
+	if err := json.Unmarshal([]byte(rec.FinalResult()), &jres); err != nil {
 		logger.Println("JSON unmarshal error:", err)
 		return "", fmt.Errorf("failed to parse Vosk result: %w", err)
 	}
@@ -528,11 +527,11 @@ func STT(req sr.SpeechRequest) (string, error) {
 // GetThermalStats returns current thermal management statistics
 func GetThermalStats() map[string]interface{} {
 	return map[string]interface{}{
-		"total_requests":    totalRequests.Load(),
+		"total_requests":   totalRequests.Load(),
 		"total_sleep_time": totalSleepTime.Load(),
 		"current_pressure": thermalPressure.Load(),
-		"is_sleeping":       isSleeping.Load(),
-		"cpu_temp":          GetCPUTemperature(),
+		"is_sleeping":      isSleeping.Load(),
+		"cpu_temp":         GetCPUTemperature(),
 		"idle_time":        CalculateIdleTime().Seconds(),
 	}
 }
@@ -561,8 +560,7 @@ func runTest() {
 		rec.AcceptWaveform(sample)
 	}
 	var jres map[string]interface{}
-	err = json.Unmarshal([]byte(rec.FinalResult()), &jres)
-	if err != nil {
+	if err := json.Unmarshal([]byte(rec.FinalResult()), &jres); err != nil {
 		logger.Println("JSON unmarshal error in test:", err)
 		return
 	}

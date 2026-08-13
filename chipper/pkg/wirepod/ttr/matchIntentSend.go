@@ -25,7 +25,7 @@ type systemIntentResponseStruct struct {
 func sanitizeArg(arg string) string {
 	// Remove or escape dangerous characters
 	// Allowed: alphanumeric, dash, underscore, dot, slash, space, quotes
-	dangerousChars := regexp.MustCompile(`[;&|$><\`+"`"+`\[\]{}()!*?]`)
+	dangerousChars := regexp.MustCompile(`[;&|$><\` + "`" + `\[\]{}()!*?]`)
 	sanitized := dangerousChars.ReplaceAllString(arg, "")
 	// Collapse multiple spaces
 	multipleSpaces := regexp.MustCompile(`\s+`)
@@ -159,8 +159,8 @@ func customIntentHandler(req interface{}, voiceText string, botSerial string) bo
 							}
 							arg = sanitizeArg(botSerial)
 						case "!speechText":
-							// Sanitize speechText to prevent injection (SEC-002)
-							arg = sanitizeArg(voiceText)
+							// Sanitized, then quoted to match the original arg contract external scripts expect (SEC-002)
+							arg = "\"" + sanitizeArg(voiceText) + "\""
 						case "!intentName":
 							arg = c.Name
 						case "!locale":
@@ -358,7 +358,7 @@ func KnowledgeGraphResponseIG(req *vtt.IntentGraphRequest, spokenText string, qu
 		QueryText:    queryText,
 		CommandType:  pb.RobotMode_VOICE_COMMAND.String(),
 	}
-	
+
 	if err := req.Stream.Send(&intentGraphSend); err != nil {
 		return err
 	}

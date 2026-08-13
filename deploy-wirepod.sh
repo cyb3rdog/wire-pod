@@ -3,22 +3,22 @@
 
 set -euo pipefail
 
-SCRIPT_DIR=&quot;$(cd &quot;$(dirname &quot;${BASH_SOURCE[0]}&quot;)&quot; &amp;&amp; pwd)&quot;
-CHIPPER_DIR=&quot;$SCRIPT_DIR/chipper&quot;
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CHIPPER_DIR="$SCRIPT_DIR/chipper"
 
-RPI_USER=&quot;${RPI_USER:-pi}&quot;
-RPI_IP=&quot;${RPI_IP:?Error: Set RPI_IP env var (e.g. export RPI_IP=192.168.88.100)}&quot;
+RPI_USER="${RPI_USER:-pi}"
+RPI_IP="${RPI_IP:?Error: Set RPI_IP env var (e.g. export RPI_IP=192.168.88.100)}"
 
-echo &quot;=== WirePod Deploy to $RPI_USER@$RPI_IP ===&quot;
+echo "=== WirePod Deploy to $RPI_USER@$RPI_IP ==="
 
-cd &quot;$CHIPPER_DIR&quot;
+cd "$CHIPPER_DIR"
 ./build-release.sh  # Build portable wire-pod binary
 
-echo &quot;Transferring files...&quot;
-scp wire-pod apiConfig.json customIntents.json weather-map.json wire-pod.service &quot;$RPI_USER@$RPI_IP:/tmp/&quot;
+echo "Transferring files..."
+scp wire-pod apiConfig.json customIntents.json weather-map.json wire-pod.service "$RPI_USER@$RPI_IP:/tmp/"
 
-echo &quot;Installing on RPi...&quot;
-ssh &quot;$RPI_USER@$RPI_IP&quot; $&apos;
+echo "Installing on RPi..."
+ssh "$RPI_USER@$RPI_IP" '
   sudo cp /tmp/wire-pod /usr/bin/wire-pod
   sudo chmod 755 /usr/bin/wire-pod
   sudo mkdir -p /etc/wire-pod
@@ -27,11 +27,11 @@ ssh &quot;$RPI_USER@$RPI_IP&quot; $&apos;
   sudo systemctl daemon-reload
   sudo systemctl enable wire-pod.service
   sudo systemctl restart wire-pod.service
-  echo &quot;Status:&quot;
+  echo "Status:"
   sudo systemctl status wire-pod.service --no-pager -l
-  echo &quot;Logs (tail 20):&quot;
+  echo "Logs (tail 20):"
   sudo journalctl -u wire-pod.service -n 20
-&apos;
+'
 
-echo &quot;✅ Deploy COMPLETE. Check WirePod MCP health.&quot;
-echo &quot;Usage: export RPI_IP=your_rpi_ip; ./deploy-wirepod.sh&quot;
+echo "Deploy complete."
+echo "Usage: export RPI_IP=your_rpi_ip; ./deploy-wirepod.sh"

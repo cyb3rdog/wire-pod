@@ -27,7 +27,7 @@ if [[ ! -f ./source.sh ]]; then
 fi
 
 source source.sh
-export GOMAXPROCS=1
+export GOMAXPROCS="${GOMAXPROCS:-1}"
 mkdir -p /tmp/go-modcache
 export GOMODCACHE=/tmp/go-modcache
 

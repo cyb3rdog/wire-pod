@@ -302,7 +302,7 @@ func Init() {
 	if _, err := os.Stat(JdocsPath); err == nil {
 		jsonBytes, err := os.ReadFile(JdocsPath)
 		if err != nil {
-			logger.Printf("Error reading jdocs file: %v", err)
+			logger.Println(fmt.Sprintf("Error reading jdocs file: %v", err))
 		} else {
 			json.Unmarshal(jsonBytes, &BotJdocs)
 			logger.Println("Loaded jdocs file")

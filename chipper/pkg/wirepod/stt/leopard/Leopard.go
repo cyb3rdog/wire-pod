@@ -80,7 +80,7 @@ func STT(req sr.SpeechRequest) (transcribedText string, err error) {
 	transcribedTextPre, _, err := leopardSTT.Process(sr.BytesToSamples(req.DecodedMicData))
 	if err != nil {
 		logger.Println(err)
-		return "", err  // Return error instead of silent failure
+		return "", err // Return error instead of silent failure
 	}
 	transcribedText = strings.ToLower(transcribedTextPre)
 	logger.Println("Bot " + req.Device + " Transcribed text: " + transcribedText)
