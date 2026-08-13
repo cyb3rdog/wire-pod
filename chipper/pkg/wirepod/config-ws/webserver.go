@@ -351,15 +351,20 @@ func handleGetVersionInfo(w http.ResponseWriter) {
 		CurrentCommit   string `json:"currentcommit"`
 		UpdateAvailable bool   `json:"avail"`
 	}
-	var fromSource bool
-	if installedVer == "" {
-		fromSource = true
-	}
+	// chipper/version is a committed file, so it's present in every
+	// checkout regardless of how the binary was actually built -- its mere
+	// existence can't tell source builds apart from anything else. What
+	// can: vars.CommitSHA, which every real build path (dockerfile,
+	// build-release.sh, setup.sh) injects via -ldflags at build time. Only
+	// a manual `go build` bypassing all of them leaves it empty/"unknown",
+	// which is the only case that should fall back to comparing the
+	// static (and possibly stale) version tag instead.
+	fromSource := vars.CommitSHA != "" && !strings.EqualFold(vars.CommitSHA, "unknown")
 	var uAvail bool
 	if fromSource {
 		uAvail = vars.CommitSHA != strings.TrimSpace(currentCommit)
 	} else {
-		uAvail = installedVer != strings.TrimSpace(currentVer)
+		uAvail = installedVer != "" && installedVer != strings.TrimSpace(currentVer)
 	}
 	verInfo := VersionInfo{
 		FromSource:      fromSource,

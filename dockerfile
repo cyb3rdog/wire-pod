@@ -126,8 +126,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     export CGO_LDFLAGS="-L/opt/vosk/libvosk -L${LIB_DIR} -lvosk -lopus -lopusfile -lsodium -lasound -ldl -lpthread"; \
     GOOS=${GOOS_VALUE} GOARCH=${GOARCH_VALUE} \
     go build -tags "nolibopusfile" -ldflags "-s -w -X github.com/kercre123/wire-pod/chipper/pkg/vars.CommitSHA=${BUILD_COMMIT}" \
-        -o /build/chipper ./cmd/vosk; \
-    echo "${BUILD_COMMIT}" >/build/.wirepod-version
+        -o /build/chipper ./cmd/vosk
 
 
 FROM ubuntu:22.04 AS runtime
@@ -167,7 +166,6 @@ WORKDIR /opt/wire-pod
 COPY --from=builder /opt/vosk/libvosk /opt/vosk/libvosk
 COPY --from=builder /src /opt/wire-pod
 COPY --from=builder /build/chipper /opt/wire-pod/chipper/chipper
-COPY --from=builder /build/.wirepod-version /opt/wire-pod/.wirepod-version
 
 # CAP_NET_BIND_SERVICE lets the unprivileged "wirepod" user (set below)
 # bind the privileged 80/443 ports without the process needing to run
