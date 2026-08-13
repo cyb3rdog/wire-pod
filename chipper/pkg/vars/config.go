@@ -48,6 +48,9 @@ type apiConfig struct {
 	} `json:"server"`
 	HasReadFromEnv   bool `json:"hasreadfromenv"`
 	PastInitialSetup bool `json:"pastinitialsetup"`
+	Dashboard        struct {
+		PasswordHash string `json:"password_hash,omitempty"`
+	} `json:"dashboard"`
 }
 
 func WriteConfigToDisk() {

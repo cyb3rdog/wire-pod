@@ -20,6 +20,7 @@ import (
 	"github.com/kercre123/wire-pod/chipper/pkg/logger"
 	"github.com/kercre123/wire-pod/chipper/pkg/scripting"
 	"github.com/kercre123/wire-pod/chipper/pkg/vars"
+	"github.com/kercre123/wire-pod/chipper/pkg/wirepod/dashboardauth"
 )
 
 var serverFiles string = "./webroot/sdkapp"
@@ -641,7 +642,7 @@ func BeginServer() {
 	ipAddr := vars.GetOutboundIP().String()
 	logger.Println("\033[1;36mConfiguration page: http://" + ipAddr + ":" + vars.WebPort + "\033[0m")
 	if runtime.GOOS != "android" {
-		if err := http.ListenAndServe(":80", nil); err != nil {
+		if err := http.ListenAndServe(":80", dashboardauth.Wrap(http.DefaultServeMux)); err != nil {
 			if vars.Packaged {
 				logger.WarnMsg("A process is using port 80. Wire-pod will keep running, but connCheck functionality will not work, so your bot may not always stay connected to your wire-pod instance.")
 			}

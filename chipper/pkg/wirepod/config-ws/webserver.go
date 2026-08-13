@@ -15,6 +15,7 @@ import (
 	"github.com/kercre123/wire-pod/chipper/pkg/logger"
 	"github.com/kercre123/wire-pod/chipper/pkg/scripting"
 	"github.com/kercre123/wire-pod/chipper/pkg/vars"
+	"github.com/kercre123/wire-pod/chipper/pkg/wirepod/dashboardauth"
 	"github.com/kercre123/wire-pod/chipper/pkg/wirepod/localization"
 	processreqs "github.com/kercre123/wire-pod/chipper/pkg/wirepod/preqs"
 	botsetup "github.com/kercre123/wire-pod/chipper/pkg/wirepod/setup"
@@ -395,6 +396,7 @@ func DisableCachingAndSniffing(next http.Handler) http.Handler {
 }
 
 func StartWebServer() {
+	dashboardauth.RegisterRoutes()
 	botsetup.RegisterSSHAPI()
 	botsetup.RegisterBLEAPI()
 	http.HandleFunc("/api/", apiHandler)
@@ -410,7 +412,7 @@ func StartWebServer() {
 	}
 	http.Handle("/", DisableCachingAndSniffing(webRoot))
 	fmt.Printf("Starting webserver at port " + vars.WebPort + " (http://localhost:" + vars.WebPort + ")\n")
-	if err := http.ListenAndServe(":"+vars.WebPort, nil); err != nil {
+	if err := http.ListenAndServe(":"+vars.WebPort, dashboardauth.Wrap(http.DefaultServeMux)); err != nil {
 		logger.Println("Error binding to " + vars.WebPort + ": " + err.Error())
 		if vars.Packaged {
 			logger.ErrMsg("FATAL: Wire-pod was unable to bind to port " + vars.WebPort + ". Another process is likely using it. Exiting.")

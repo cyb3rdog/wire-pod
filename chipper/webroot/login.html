@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Wire-Pod</title>
+  <meta name="theme-color" content="#1e1e1e">
+  <link rel="stylesheet" type="text/css" href="css/style.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+  <style>
+    input[type="password"] {
+      background-color: #2d2d2d;
+      color: #ffffff;
+      font-family: var(--body-font-family);
+      font-size: 1.0em;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+      text-align: center;
+      border: 2px solid var(--fg-color);
+      box-sizing: border-box;
+      transition: border-color 0.3s;
+      width: 100%;
+      max-width: 260px;
+      padding: 8px;
+      margin: 6px 0;
+    }
+    input[type="password"]:hover, input[type="password"]:focus {
+      border-color: white;
+      border: 2px solid;
+    }
+    #auth-box {
+      max-width: 320px;
+      width: 100%;
+      text-align: center;
+    }
+    #auth-error {
+      color: #ff6b6b;
+      min-height: 1.2em;
+      font-size: 0.9em;
+    }
+    #auth-hint {
+      color: #aaaaaa;
+      font-size: 0.85em;
+      margin-bottom: 1em;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="auth-box">
+    <h1>Wire-Pod</h1>
+    <form id="auth-form">
+      <p id="auth-hint"></p>
+      <input type="password" id="password" placeholder="Password" autocomplete="current-password" required />
+      <br />
+      <input type="password" id="confirm" placeholder="Confirm password" autocomplete="new-password"
+        style="display:none" />
+      <br />
+      <button type="submit" id="auth-submit">Log In</button>
+      <p id="auth-error"></p>
+    </form>
+  </div>
+
+  <script>
+    var confirmInput = document.getElementById("confirm");
+    var hint = document.getElementById("auth-hint");
+    var submitBtn = document.getElementById("auth-submit");
+    var errorBox = document.getElementById("auth-error");
+    var isSetup = false;
+
+    fetch("/api/auth/status", { credentials: "same-origin" })
+      .then(function (res) { return res.json(); })
+      .then(function (status) {
+        if (status.authenticated) {
+          window.location.replace("/");
+          return;
+        }
+        if (!status.initialized) {
+          isSetup = true;
+          hint.textContent = "Set an admin password to secure this dashboard.";
+          confirmInput.style.display = "inline-block";
+          submitBtn.textContent = "Set Password";
+        } else {
+          hint.textContent = "Enter your admin password.";
+        }
+      })
+      .catch(function () {
+        errorBox.textContent = "Could not reach wire-pod.";
+      });
+
+    document.getElementById("auth-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      errorBox.textContent = "";
+      var password = document.getElementById("password").value;
+      var body = isSetup
+        ? { password: password, confirm: confirmInput.value }
+        : { password: password };
+      fetch(isSetup ? "/api/auth/setup" : "/api/auth/login", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+        .then(function (res) {
+          if (res.ok) {
+            window.location.replace("/");
+            return;
+          }
+          return res.json().then(function (data) {
+            throw new Error((data && data.error) || "request failed");
+          });
+        })
+        .catch(function (err) {
+          errorBox.textContent = err.message;
+        });
+    });
+  </script>
+</body>
+
+</html>
