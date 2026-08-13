@@ -25,13 +25,36 @@ func ParseSpokenResponse(serverResponseJSON string) (string, error) {
 		logger.Println(err.Error())
 		return "", errors.New("failed to decode json")
 	}
-	if !strings.EqualFold(result["Status"].(string), "OK") {
-		return "", errors.New(result["ErrorMessage"].(string))
+
+	status, ok := result["Status"].(string)
+	if !ok {
+		return "", errors.New("unexpected houndify response: missing Status")
 	}
-	if result["NumToReturn"].(float64) < 1 {
+	if !strings.EqualFold(status, "OK") {
+		if msg, ok := result["ErrorMessage"].(string); ok {
+			return "", errors.New(msg)
+		}
+		return "", errors.New("houndify request failed")
+	}
+
+	numToReturn, ok := result["NumToReturn"].(float64)
+	if !ok || numToReturn < 1 {
 		return "", errors.New("no results to return")
 	}
-	return result["AllResults"].([]interface{})[0].(map[string]interface{})["SpokenResponseLong"].(string), nil
+
+	allResults, ok := result["AllResults"].([]interface{})
+	if !ok || len(allResults) == 0 {
+		return "", errors.New("unexpected houndify response: missing AllResults")
+	}
+	firstResult, ok := allResults[0].(map[string]interface{})
+	if !ok {
+		return "", errors.New("unexpected houndify response: malformed result")
+	}
+	spokenResponse, ok := firstResult["SpokenResponseLong"].(string)
+	if !ok {
+		return "", errors.New("unexpected houndify response: missing SpokenResponseLong")
+	}
+	return spokenResponse, nil
 }
 
 func InitKnowledge() {

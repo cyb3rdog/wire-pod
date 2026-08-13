@@ -15,10 +15,12 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/kercre123/wire-pod/chipper/pkg/logger"
 	"github.com/kercre123/wire-pod/chipper/pkg/vars"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -114,11 +116,21 @@ func isProtected(path string) bool {
 	return false
 }
 
-// Wrap requires a valid dashboard session for every admin/API endpoint.
-// Use it in place of `nil` wherever wire-pod currently does
-// http.ListenAndServe(addr, nil) against the default mux.
+// Wrap requires a valid dashboard session for every admin/API endpoint, and
+// recovers a panicking handler so one bad request can't take the whole
+// process down for every connected robot. Use it in place of `nil` wherever
+// wire-pod currently does http.ListenAndServe(addr, nil) against the
+// default mux.
 func Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				logger.Println("dashboardauth: recovered panic in", r.Method, r.URL.Path, ":", rec, "\n", string(debug.Stack()))
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"error":"internal error"}`))
+			}
+		}()
 		if isProtected(r.URL.Path) && !validSession(r) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)

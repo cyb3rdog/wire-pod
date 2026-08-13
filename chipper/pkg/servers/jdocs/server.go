@@ -10,11 +10,23 @@ import (
 	"github.com/kercre123/wire-pod/chipper/pkg/logger"
 	tokenserver "github.com/kercre123/wire-pod/chipper/pkg/servers/token"
 	"github.com/kercre123/wire-pod/chipper/pkg/vars"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/peer"
+	"google.golang.org/grpc/status"
 )
 
 type JdocServer struct {
 	jdocspb.UnimplementedJdocsServer
+}
+
+// esnFromThing extracts the ESN from a "vic:<esn>"-shaped Thing string.
+// Thing is robot-supplied; a value with no colon must not panic the server.
+func esnFromThing(thing string) (string, error) {
+	parts := strings.SplitN(thing, ":", 2)
+	if len(parts) != 2 || parts[1] == "" {
+		return "", status.Errorf(codes.InvalidArgument, "invalid Thing: %q", thing)
+	}
+	return parts[1], nil
 }
 
 func (s *JdocServer) WriteDoc(ctx context.Context, req *jdocspb.WriteDocReq) (*jdocspb.WriteDocResp, error) {
@@ -27,7 +39,10 @@ func (s *JdocServer) WriteDoc(ctx context.Context, req *jdocspb.WriteDocReq) (*j
 	latestVersion := vars.AddJdoc(req.Thing, req.DocName, ajdoc)
 	vars.WriteJdocs()
 
-	esn := strings.Split(req.Thing, ":")[1]
+	esn, err := esnFromThing(req.Thing)
+	if err != nil {
+		return nil, err
+	}
 	p, _ := peer.FromContext(ctx)
 	ipAddr := strings.Split(p.Addr.String(), ":")[0]
 
@@ -52,7 +67,10 @@ func (s *JdocServer) ReadDocs(ctx context.Context, req *jdocspb.ReadDocsReq) (*j
 
 	logger.Println("Jdocs: Incoming ReadDocs request, Robot ID: " + req.Thing + ", Item(s) to return: ")
 	logger.Println(req.Items)
-	esn := strings.Split(req.Thing, ":")[1]
+	esn, err := esnFromThing(req.Thing)
+	if err != nil {
+		return nil, err
+	}
 	isAlreadyKnown := IsBotInInfo(esn)
 	p, _ := peer.FromContext(ctx)
 	ipAddr := strings.Split(p.Addr.String(), ":")[0]
@@ -72,7 +90,7 @@ func (s *JdocServer) ReadDocs(ctx context.Context, req *jdocspb.ReadDocsReq) (*j
 			break
 		}
 	}
-	if strings.Contains(req.Items[0].DocName, "vic.AppTokens") {
+	if len(req.Items) > 0 && strings.Contains(req.Items[0].DocName, "vic.AppTokens") {
 		StoreBotInfo(ctx, req.Thing)
 		_, tokenExists := vars.GetJdoc(req.Thing, "vic.AppTokens")
 		if !tokenExists {

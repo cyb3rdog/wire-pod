@@ -153,3 +153,19 @@ func TestLoginRateLimiter(t *testing.T) {
 		t.Fatal("expected a different IP to be unaffected")
 	}
 }
+
+// TestWrapRecoversPanics guards against a regression of the missing-recover
+// gap: a panicking handler must not crash the process, and Wrap should
+// answer with a 500 instead of letting the panic propagate.
+func TestWrapRecoversPanics(t *testing.T) {
+	panicky := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		panic("boom")
+	})
+	handler := Wrap(panicky)
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ok", nil))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 after recovered panic, got %d", rec.Code)
+	}
+}

@@ -1,4 +1,4 @@
-package wirepod_vosk
+package wirepod_houndify
 
 import (
 	"fmt"
