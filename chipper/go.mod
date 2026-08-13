@@ -28,8 +28,8 @@ require (
 	github.com/vadv/gopher-lua-libs v0.5.0
 	github.com/wlynxg/anet v0.0.1
 	github.com/yuin/gopher-lua v1.1.1
-	golang.org/x/crypto v0.21.0
-	golang.org/x/text v0.14.0
+	golang.org/x/crypto v0.23.0
+	golang.org/x/text v0.15.0
 	google.golang.org/grpc v1.60.0
 	gopkg.in/ini.v1 v1.67.0
 )
@@ -94,8 +94,8 @@ require (
 	github.com/technoweenie/multipartstreamer v1.0.1 // indirect
 	github.com/yuin/gluamapper v0.0.0-20150323120927-d836955830e7 // indirect
 	golang.org/x/image v0.10.0 // indirect
-	golang.org/x/net v0.22.0 // indirect
-	golang.org/x/sys v0.18.0 // indirect
+	golang.org/x/net v0.25.0 // indirect
+	golang.org/x/sys v0.20.0 // indirect
 	google.golang.org/genproto v0.0.0-20231002182017-d307bd883b97 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20231002182017-d307bd883b97 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20231002182017-d307bd883b97 // indirect
