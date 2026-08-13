@@ -1,40 +1,49 @@
 # wire-pod
 
-## Overview
+wire-pod is a self-hosted reimplementation of Anki's "Chipper" cloud service for the Anki Vector robot. Anki's own cloud service for Vector was shut down; wire-pod lets a Vector robot keep working by talking to a server you run yourself instead, over the same gRPC protocol the robot's firmware already speaks.
 
-wire-pod is a third-party MCP server implementation for the Anki Vector robot, providing an alternative interface to control and interact with Vector. It enables HTTP-based communication with the robot, allowing for integration with web services, custom voice commands, and AI assistants.
+## What it does
 
-## Features
+- Speech-to-text for Vector's voice commands, via a pluggable backend: [Vosk](https://alphacephei.com/vosk/) (offline, default), [Picovoice Leopard](https://picovoice.ai/platform/leopard/), OpenAI's Whisper API, or a local [whisper.cpp](https://github.com/ggerganov/whisper.cpp) build.
+- Built-in intent matching for Vector's stock voice commands (time, weather, jokes, movement, etc.), plus **custom intents** you define yourself: match a phrase to a shell command, a Lua script, or an existing robot intent.
+- Optional LLM/knowledge-graph fallback: when nothing matches, forward the transcribed speech to an OpenAI-compatible API and have Vector speak the response.
+- A Go plugin system (`chipper/plugins/`) for hooking new voice commands into the pipeline with compiled `.so` plugins.
+- A local web UI (default `:8080`) for pairing robots, picking an STT backend/language, and managing custom intents, plugins, and API keys.
 
-- RESTful API for controlling Vector
-- WebSocket support for real-time communication
-- Custom wake word detection
-- Integration with various LLMs and AI platforms
-- Support for multiple concurrent clients
-- Extensible plugin system
+## How it fits together
+
+wire-pod runs the same jdocs/token/chipper gRPC services Vector's firmware expects, on the same ports Anki's cloud used to serve. Once a robot is pointed at your server (via a BLE pairing flow or an "escape pod" cert), it sends audio for STT, wire-pod matches the transcribed text against intents, and a response streams back to the robot the same way it always did.
 
 ## Setup
 
-1. Install wire-pod server on a compatible device
-2. Connect to the same network as your Vector robot
-3. Pair with Vector using the setup code
-4. Configure desired integrations and plugins
+### Docker (recommended)
 
-## Usage
+```sh
+docker compose up -d --build
+```
 
-The wire-pod server exposes endpoints for:
+Run from the repository root. This builds and runs the image described in `dockerfile`/`compose.yaml`, persisting config, certs, and jdocs under a named volume. See `docker/entrypoint.sh` for the environment variables it honors (`WIREPOD_STT_SERVICE`, `WIREPOD_STT_LANGUAGE`, `WIREPOD_DEBUG_LOGGING`, etc).
 
-- Voice interaction
-- Robot movement and navigation
-- Animation and LED control
-- Sensor data retrieval
-- Cube interaction
+### Native (Linux/macOS)
 
-## Integration with vector-mcp
+```sh
+sudo ./setup.sh      # installs build deps, fetches STT assets, generates certs
+sudo ./chipper/start.sh
+```
 
-This project will explore integrating wire-pod as an alternative MCP server source for the vector-mcp project, allowing for:
+`setup.sh` supports Debian/apt, Arch/pacman, Fedora/dnf, and macOS (via Homebrew). Run `sudo ./setup.sh daemon-enable` afterward to install it as a systemd service (see `chipper/wire-pod.service`).
 
-- Redundant communication channels
-- Load balancing between MCP servers
-- Feature comparison and selection
-- Enhanced reliability through failover capabilities
+### After starting
+
+Open the web UI at `http://<host>:8080` to pair your Vector robot and pick an STT engine/language (BLE setup or escape-pod mode, depending on your robot's firmware).
+
+## Security note
+
+The web UI (`:8080`) and the Lua-scripting endpoint (`:80`) are **not authenticated** — they're meant to be reached only from a trusted local network. If you expose wire-pod beyond your LAN, put it behind your own reverse proxy with auth (e.g. Caddy with `basicauth`, or an authenticating proxy in front of it) rather than exposing those ports directly.
+
+## Repository layout
+
+- `chipper/` — the actual server: `cmd/` has one entrypoint per STT backend, `pkg/` has the gRPC services, intent matching, STT backends, and web UI.
+- `vector-cloud/` — Anki's original on-robot cloud-process source, kept for reference.
+- `setup.sh` / `update.sh` — native install/update scripts.
+- `dockerfile` / `compose.yaml` / `docker/` — container build and entrypoint.
