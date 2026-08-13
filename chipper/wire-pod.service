@@ -1,0 +1,19 @@
+[Unit]
+Description=wire-pod, a voice server for the Anki Vector robot.
+StartLimitIntervalSec=500
+StartLimitBurst=5
+Wants=network-online.target
+After=network.target network-online.target
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=5s
+ExecStartPre=/usr/sbin/iw dev wlan0 set power_save off
+ExecStartPre=/bin/systemctl restart zramswap
+WorkingDirectory=/etc/wire-pod
+ExecStart=/usr/bin/wire-pod
+Environment="GOMAXPROCS=1"
+
+[Install]
+WantedBy=multi-user.target

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 
 	pb "github.com/digital-dream-labs/api/go/chipperpb"
@@ -17,6 +18,28 @@ import (
 type systemIntentResponseStruct struct {
 	Status       string `json:"status"`
 	ReturnIntent string `json:"returnIntent"`
+}
+
+// sanitizeArg removes shell metacharacters to prevent command injection
+// SEC-002: Defense against command injection in intent arguments
+func sanitizeArg(arg string) string {
+	// Remove or escape dangerous characters
+	// Allowed: alphanumeric, dash, underscore, dot, slash, space, quotes
+	dangerousChars := regexp.MustCompile(`[;&|$><\`+"`"+`\[\]{}()!*?]`)
+	sanitized := dangerousChars.ReplaceAllString(arg, "")
+	// Collapse multiple spaces
+	multipleSpaces := regexp.MustCompile(`\s+`)
+	return multipleSpaces.ReplaceAllString(sanitized, " ")
+}
+
+// isValidBotSerial validates that bot serial is in expected format (hex string)
+func isValidBotSerial(serial string) bool {
+	// Valid ESN format: 8-12 hex characters
+	if len(serial) < 8 || len(serial) > 12 {
+		return false
+	}
+	validHex := regexp.MustCompile(`^[0-9A-Fa-f]+$`)
+	return validHex.MatchString(serial)
 }
 
 func IntentPass(req interface{}, intentThing string, speechText string, intentParams map[string]string, isParam bool) (interface{}, error) {
@@ -129,9 +152,15 @@ func customIntentHandler(req interface{}, voiceText string, botSerial string) bo
 					for _, arg := range c.ExecArgs {
 						switch arg {
 						case "!botSerial":
-							arg = botSerial
+							// Validate botSerial format before use (SEC-002)
+							if !isValidBotSerial(botSerial) {
+								logger.Println("Bot " + botSerial + " Invalid ESN format, skipping intent execution")
+								return false
+							}
+							arg = sanitizeArg(botSerial)
 						case "!speechText":
-							arg = "\"" + voiceText + "\""
+							// Sanitize speechText to prevent injection (SEC-002)
+							arg = sanitizeArg(voiceText)
 						case "!intentName":
 							arg = c.Name
 						case "!locale":

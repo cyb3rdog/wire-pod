@@ -203,7 +203,7 @@ func RunMDNS(botIP string) {
 	for entry := range entries {
 		robotID := strings.Split(entry.HostName, ".")[0]
 		matched := false
-		for _, rinf := range vars.RecurringInfo {
+		for _, rinf := range vars.GetRecurringInfo() {
 			if rinf.ID == robotID {
 				vars.AddToRInfo(rinf.ESN, robotID, fmt.Sprint(entry.AddrIPv4[0]))
 				for i, rob := range vars.BotInfo.Robots {

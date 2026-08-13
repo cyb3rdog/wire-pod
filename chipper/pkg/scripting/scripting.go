@@ -160,11 +160,12 @@ func postHTTPRequest(L *lua.LState) int {
 	body := L.ToString(3)
 	timeout := L.ToInt(4)
 	r := bytes.NewReader([]byte(body))
-	cl := http.DefaultClient
+	// Default 30 second timeout if not specified (SEC-005)
+	client := &http.Client{Timeout: 30 * time.Second}
 	if timeout > 0 {
-		cl.Timeout = time.Second * time.Duration(timeout)
+		client.Timeout = time.Second * time.Duration(timeout)
 	}
-	resp, err := cl.Post(url, contentType, r)
+	resp, err := client.Post(url, contentType, r)
 	if err != nil {
 		logger.LogUI("Lua postHTTPRequest error:", err)
 		L.Push(lua.LString("http error: " + err.Error()))
@@ -184,11 +185,12 @@ func postHTTPRequest(L *lua.LState) int {
 func getHTTPRequest(L *lua.LState) int {
 	url := L.ToString(1)
 	timeout := L.ToInt(2)
-	cl := http.DefaultClient
+	// Default 30 second timeout if not specified (SEC-005)
+	client := &http.Client{Timeout: 30 * time.Second}
 	if timeout > 0 {
-		cl.Timeout = time.Second * time.Duration(timeout)
+		client.Timeout = time.Second * time.Duration(timeout)
 	}
-	resp, err := cl.Get(url)
+	resp, err := client.Get(url)
 	if err != nil {
 		logger.LogUI("Lua getHTTPRequest error:", err)
 		L.Push(lua.LString("http error: " + err.Error()))

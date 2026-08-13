@@ -21,14 +21,21 @@ var MDNSTimeBeforeNextRegister float32
 func PostmDNSWhenNewVector() {
 	time.Sleep(time.Second * 5)
 	for {
-		resolver, _ := zeroconf.NewResolver(nil)
+		resolver, err := zeroconf.NewResolver(nil)
+		if err != nil {
+			fmt.Println("Failed to create mDNS resolver:", err)
+			time.Sleep(time.Second * 10)
+			continue
+		}
 		entries := make(chan *zeroconf.ServiceEntry)
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*80)
-		err := resolver.Browse(ctx, "_ankivector._tcp", "local.", entries)
+		err = resolver.Browse(ctx, "_ankivector._tcp", "local.", entries)
 		if err != nil {
 			fmt.Println(err)
 			cancel()
-			return
+			// Wait before retrying to avoid tight loop
+			time.Sleep(time.Second * 10)
+			continue
 		}
 		for entry := range entries {
 			if strings.Contains(entry.Service, "ankivector") {
@@ -39,7 +46,10 @@ func PostmDNSWhenNewVector() {
 				return
 			}
 		}
+		// Channel was closed (timeout or no more entries)
 		cancel()
+		// Wait before next scan
+		time.Sleep(time.Second * 5)
 	}
 
 }

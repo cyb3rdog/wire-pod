@@ -23,7 +23,8 @@ import (
 )
 
 func GetChat(esn string) vars.RememberedChat {
-	for _, chat := range vars.RememberedChats {
+	chats := vars.GetRememberedChats()
+	for _, chat := range chats {
 		if chat.ESN == esn {
 			return chat
 		}
@@ -34,13 +35,7 @@ func GetChat(esn string) vars.RememberedChat {
 }
 
 func PlaceChat(chat vars.RememberedChat) {
-	for i, achat := range vars.RememberedChats {
-		if achat.ESN == chat.ESN {
-			vars.RememberedChats[i] = chat
-			return
-		}
-	}
-	vars.RememberedChats = append(vars.RememberedChats, chat)
+	vars.UpdateRememberedChat(chat.ESN, chat.Chats)
 }
 
 // remember last 16 lines of chat

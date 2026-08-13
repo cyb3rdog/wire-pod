@@ -90,7 +90,8 @@ func makeOpenAIReq(in []byte) string {
 	httpReq.Header.Set("Content-Type", w.FormDataContentType())
 	httpReq.Header.Set("Authorization", "Bearer "+os.Getenv("OPENAI_KEY"))
 
-	client := &http.Client{}
+	// 60 second timeout for Whisper API (SEC-004)
+	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		logger.Println(err)

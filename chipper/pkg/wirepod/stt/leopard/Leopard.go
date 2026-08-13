@@ -5,15 +5,14 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
+	"sync/atomic"
 
 	leopard "github.com/Picovoice/leopard/binding/go/v2"
 	"github.com/kercre123/wire-pod/chipper/pkg/logger"
 	sr "github.com/kercre123/wire-pod/chipper/pkg/wirepod/speechrequest"
 )
 
-var BotNum int
-var BotNumMu sync.Mutex
+var BotNum int64
 
 var Name string = "leopard"
 
@@ -57,24 +56,20 @@ func Init() error {
 }
 
 func STT(req sr.SpeechRequest) (transcribedText string, err error) {
-	BotNumMu.Lock()
-	BotNum = BotNum + 1
-	BotNumMu.Unlock()
+	newNum := atomic.AddInt64(&BotNum, 1)
+	defer atomic.AddInt64(&BotNum, -1)
 	logger.Println("(Bot " + req.Device + ", Leopard) Processing...")
 	var leopardSTT leopard.Leopard
 	speechIsDone := false
-	if BotNum > picovoiceInstances {
+	if newNum > int64(picovoiceInstances) {
 		fmt.Println("Too many bots are connected, sending error to bot " + req.Device)
 		return "", fmt.Errorf("too many bots are connected, max is 3")
 	} else {
-		leopardSTT = leopardSTTArray[BotNum-1]
+		leopardSTT = leopardSTTArray[newNum-1]
 	}
 	for {
 		_, err = req.GetNextStreamChunk()
 		if err != nil {
-			BotNumMu.Lock()
-			BotNum = BotNum - 1
-			BotNumMu.Unlock()
 			return "", err
 		}
 		speechIsDone, _ = req.DetectEndOfSpeech()
@@ -84,15 +79,10 @@ func STT(req sr.SpeechRequest) (transcribedText string, err error) {
 	}
 	transcribedTextPre, _, err := leopardSTT.Process(sr.BytesToSamples(req.DecodedMicData))
 	if err != nil {
-		BotNumMu.Lock()
-		BotNum = BotNum - 1
-		BotNumMu.Unlock()
 		logger.Println(err)
+		return "", err  // Return error instead of silent failure
 	}
 	transcribedText = strings.ToLower(transcribedTextPre)
 	logger.Println("Bot " + req.Device + " Transcribed text: " + transcribedText)
-	BotNumMu.Lock()
-	BotNum = BotNum - 1
-	BotNumMu.Unlock()
 	return transcribedText, nil
 }

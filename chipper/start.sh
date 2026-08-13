@@ -27,6 +27,9 @@ if [[ ! -f ./source.sh ]]; then
 fi
 
 source source.sh
+export GOMAXPROCS=1
+mkdir -p /tmp/go-modcache
+export GOMODCACHE=/tmp/go-modcache
 
 # set go tags
 export GOTAGS="nolibopusfile"
@@ -86,15 +89,15 @@ if [[ ${STT_SERVICE} == "leopard" ]]; then
     elif [[ ${STT_SERVICE} == "vosk" ]]; then
     if [[ -f ./chipper ]]; then
         export CGO_ENABLED=1
-        export CGO_CFLAGS="-I/root/.vosk/libvosk"
-        export CGO_LDFLAGS="-L /root/.vosk/libvosk -lvosk -ldl -lpthread"
-        export LD_LIBRARY_PATH="/root/.vosk/libvosk:$LD_LIBRARY_PATH"
+        export CGO_CFLAGS="-I$HOME/.vosk/libvosk"
+        export CGO_LDFLAGS="-L$HOME/.vosk/libvosk -lvosk -ldl -lpthread"
+        export LD_LIBRARY_PATH="$HOME/.vosk/libvosk:$LD_LIBRARY_PATH"
         ./chipper
     else
         export CGO_ENABLED=1
-        export CGO_CFLAGS="-I$HOME/.vosk/libvosk -I/root/.vosk/libvosk"
-        export CGO_LDFLAGS="-L$HOME/.vosk/libvosk -L/root/.vosk/libvosk -lvosk -ldl -lpthread"
-        export LD_LIBRARY_PATH="/root/.vosk/libvosk:$HOME/.vosk/libvosk:$LD_LIBRARY_PATH"
+        export CGO_CFLAGS="-I$HOME/.vosk/libvosk -I$HOME/.vosk/libvosk"
+        export CGO_LDFLAGS="-L$HOME/.vosk/libvosk -L$HOME/.vosk/libvosk -lvosk -ldl -lpthread"
+        export LD_LIBRARY_PATH="$HOME/.vosk/libvosk:$HOME/.vosk/libvosk:$LD_LIBRARY_PATH"
         go run -tags $GOTAGS -ldflags="${GOLDFLAGS}" -exec "env DYLD_LIBRARY_PATH=$HOME/.vosk/libvosk" cmd/vosk/main.go
     fi
 else

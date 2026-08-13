@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/fforchino/vector-go-sdk/pkg/vector"
 	"github.com/kercre123/wire-pod/chipper/pkg/logger"
@@ -65,6 +66,11 @@ var CustomIntentsExist bool = false
 var DownloadedVoskModels []string
 var VoskGrammerEnable bool = false
 
+// Mutexes for thread-safe access to shared slices
+var botJdocsMu sync.RWMutex // Protects BotJdocs
+var rememberedChatsMu sync.RWMutex
+var recurringInfoMu sync.RWMutex // Protects RecurringInfo
+
 // here to prevent import cycle (localization restructure)
 var SttInitFunc func() error
 
@@ -78,6 +84,63 @@ var ChipperKey []byte
 var ChipperKeysLoaded bool
 
 var RecurringInfo []RecurringInfoStore
+
+// Thread-safe accessors for RememberedChats
+func GetRememberedChats() []RememberedChat {
+	rememberedChatsMu.RLock()
+	defer rememberedChatsMu.RUnlock()
+	// Return a copy to prevent external mutation
+	result := make([]RememberedChat, len(RememberedChats))
+	copy(result, RememberedChats)
+	return result
+}
+
+func SetRememberedChats(chats []RememberedChat) {
+	rememberedChatsMu.Lock()
+	defer rememberedChatsMu.Unlock()
+	RememberedChats = chats
+}
+
+func AppendRememberedChat(esn string, chat []openai.ChatCompletionMessage) {
+	rememberedChatsMu.Lock()
+	defer rememberedChatsMu.Unlock()
+	for i, achat := range RememberedChats {
+		if achat.ESN == esn {
+			RememberedChats[i].Chats = append(RememberedChats[i].Chats, chat...)
+			return
+		}
+	}
+	// New ESN, add new entry
+	RememberedChats = append(RememberedChats, RememberedChat{
+		ESN:   esn,
+		Chats: chat,
+	})
+}
+
+func UpdateRememberedChat(esn string, chat []openai.ChatCompletionMessage) {
+	rememberedChatsMu.Lock()
+	defer rememberedChatsMu.Unlock()
+	for i, achat := range RememberedChats {
+		if achat.ESN == esn {
+			RememberedChats[i].Chats = chat
+			return
+		}
+	}
+	// Not found, append new
+	RememberedChats = append(RememberedChats, RememberedChat{
+		ESN:   esn,
+		Chats: chat,
+	})
+}
+
+// Thread-safe accessors for RecurringInfo
+func GetRecurringInfo() []RecurringInfoStore {
+	recurringInfoMu.RLock()
+	defer recurringInfoMu.RUnlock()
+	result := make([]RecurringInfoStore, len(RecurringInfo))
+	copy(result, RecurringInfo)
+	return result
+}
 
 type RememberedChat struct {
 	ESN   string                         `json:"esn"`
@@ -237,9 +300,13 @@ func Init() {
 
 	// load jdocs. if there are any in the old format, conver
 	if _, err := os.Stat(JdocsPath); err == nil {
-		jsonBytes, _ := os.ReadFile(JdocsPath)
-		json.Unmarshal(jsonBytes, &BotJdocs)
-		logger.Println("Loaded jdocs file")
+		jsonBytes, err := os.ReadFile(JdocsPath)
+		if err != nil {
+			logger.Printf("Error reading jdocs file: %v", err)
+		} else {
+			json.Unmarshal(jsonBytes, &BotJdocs)
+			logger.Println("Loaded jdocs file")
+		}
 	}
 
 	// load bot sdk info
@@ -313,12 +380,16 @@ func LoadIntents() ([]JsonIntent, error) {
 }
 
 func WriteJdocs() {
+	botJdocsMu.Lock()
+	defer botJdocsMu.Unlock()
 	writeBytes, _ := json.Marshal(BotJdocs)
 	os.WriteFile(JdocsPath, writeBytes, 0644)
 }
 
 // removes a bot from jdocs file
 func DeleteData(thing string) {
+	botJdocsMu.Lock()
+	defer botJdocsMu.Unlock()
 	var newdocs []botjdoc
 	for _, jdocentry := range BotJdocs {
 		if jdocentry.Thing != thing {
@@ -330,6 +401,8 @@ func DeleteData(thing string) {
 }
 
 func GetJdoc(thing, jdocname string) (AJdoc, bool) {
+	botJdocsMu.RLock()
+	defer botJdocsMu.RUnlock()
 	for _, botJdoc := range BotJdocs {
 		if botJdoc.Name == jdocname && botJdoc.Thing == thing {
 			return botJdoc.Jdoc, true
@@ -344,6 +417,8 @@ func GetJdoc(thing, jdocname string) (AJdoc, bool) {
 // JsonDoc        string
 
 func AddJdoc(thing string, name string, jdoc AJdoc) uint64 {
+	botJdocsMu.Lock()
+	defer botJdocsMu.Unlock()
 	var latestVersion uint64 = 0
 	matched := false
 	for index, jdocentry := range BotJdocs {
@@ -361,7 +436,9 @@ func AddJdoc(thing string, name string, jdoc AJdoc) uint64 {
 		newbot.Jdoc = jdoc
 		BotJdocs = append(BotJdocs, newbot)
 	}
-	WriteJdocs()
+	// WriteJdocs acquires lock again - we need internalWriteJdocs
+	writeBytes, _ := json.Marshal(BotJdocs)
+	os.WriteFile(JdocsPath, writeBytes, 0644)
 	return latestVersion
 }
 
@@ -373,6 +450,8 @@ func ReadSessionCerts() {
 		logger.Println(err)
 		return
 	}
+	recurringInfoMu.Lock()
+	defer recurringInfoMu.Unlock()
 	for _, entry := range certDir {
 		if entry.Name() == "placeholder" {
 			continue
@@ -400,6 +479,8 @@ func ReadSessionCerts() {
 }
 
 func AddToRInfo(esn string, id string, ip string) {
+	recurringInfoMu.Lock()
+	defer recurringInfoMu.Unlock()
 	// the only bot constant is ESN
 	for i := range RecurringInfo {
 		if RecurringInfo[i].ESN == esn {

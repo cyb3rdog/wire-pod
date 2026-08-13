@@ -19,6 +19,10 @@ import (
 // one type and many functions for dealing with intent, intent-graph, and knowledge-graph requests
 // also some functions to help decode the stream bytes into ones friendly for stt engines
 
+const (
+	MaxAudioBufferSize = 100 * 1024 * 1024 // 100MB limit per request
+)
+
 var debugWriteFile bool = false
 var debugFile *os.File
 
@@ -210,7 +214,16 @@ func highPassFilter(data []byte) []byte {
 // Converts a vtt.*Request to a SpeechRequest, which allows functions like DetectEndOfSpeech to work
 func ReqToSpeechRequest(req interface{}) SpeechRequest {
 	if debugWriteFile {
-		debugFile, _ = os.Create("/tmp/wirepodtest.ogg")
+		debugFile, err := os.Create("/tmp/wirepodtest.ogg")
+		if err != nil {
+			logger.Println("Failed to create debug file:", err)
+			debugWriteFile = false
+		}
+		defer func() {
+			if debugFile != nil {
+				debugFile.Close()
+			}
+		}()
 	}
 	var request SpeechRequest
 	request.PrevLen = 0
@@ -273,6 +286,10 @@ func (req *SpeechRequest) GetNextStreamChunk() ([]byte, error) {
 			logger.Println(chunkErr)
 			return nil, chunkErr
 		}
+		// Check buffer size limits to prevent memory exhaustion
+		if len(req.MicData)+len(chunk.InputAudio) > MaxAudioBufferSize {
+			return nil, fmt.Errorf("audio buffer exceeded limit of %d bytes", MaxAudioBufferSize)
+		}
 		req.MicData = append(req.MicData, chunk.InputAudio...)
 		req.DecodedMicData = append(req.DecodedMicData, req.OpusDecode(chunk.InputAudio)...)
 		req.FilteredMicData = append(req.FilteredMicData, highPassFilter(req.OpusDecode(chunk.InputAudio))...)
@@ -286,6 +303,9 @@ func (req *SpeechRequest) GetNextStreamChunk() ([]byte, error) {
 		if chunkErr != nil {
 			logger.Println(chunkErr)
 			return nil, chunkErr
+		}
+		if len(req.MicData)+len(chunk.InputAudio) > MaxAudioBufferSize {
+			return nil, fmt.Errorf("audio buffer exceeded limit of %d bytes", MaxAudioBufferSize)
 		}
 		req.MicData = append(req.MicData, chunk.InputAudio...)
 		req.DecodedMicData = append(req.DecodedMicData, req.OpusDecode(chunk.InputAudio)...)
@@ -303,6 +323,9 @@ func (req *SpeechRequest) GetNextStreamChunk() ([]byte, error) {
 		if chunkErr != nil {
 			logger.Println(chunkErr)
 			return nil, chunkErr
+		}
+		if len(req.MicData)+len(chunk.InputAudio) > MaxAudioBufferSize {
+			return nil, fmt.Errorf("audio buffer exceeded limit of %d bytes", MaxAudioBufferSize)
 		}
 		req.MicData = append(req.MicData, chunk.InputAudio...)
 		req.DecodedMicData = append(req.DecodedMicData, req.OpusDecode(chunk.InputAudio)...)
@@ -325,6 +348,9 @@ func (req *SpeechRequest) GetNextStreamChunkOpus() ([]byte, error) {
 			logger.Println(chunkErr)
 			return nil, chunkErr
 		}
+		if len(req.MicData)+len(chunk.InputAudio) > MaxAudioBufferSize {
+			return nil, fmt.Errorf("audio buffer exceeded limit of %d bytes", MaxAudioBufferSize)
+		}
 		req.MicData = append(req.MicData, chunk.InputAudio...)
 		req.DecodedMicData = append(req.DecodedMicData, req.OpusDecode(chunk.InputAudio)...)
 		dataReturn := req.MicData[req.PrevLenRaw:]
@@ -339,6 +365,9 @@ func (req *SpeechRequest) GetNextStreamChunkOpus() ([]byte, error) {
 			logger.Println(chunkErr)
 			return nil, chunkErr
 		}
+		if len(req.MicData)+len(chunk.InputAudio) > MaxAudioBufferSize {
+			return nil, fmt.Errorf("audio buffer exceeded limit of %d bytes", MaxAudioBufferSize)
+		}
 		req.MicData = append(req.MicData, chunk.InputAudio...)
 		req.DecodedMicData = append(req.DecodedMicData, req.OpusDecode(chunk.InputAudio)...)
 		dataReturn := req.MicData[req.PrevLenRaw:]
@@ -352,6 +381,9 @@ func (req *SpeechRequest) GetNextStreamChunkOpus() ([]byte, error) {
 		if chunkErr != nil {
 			logger.Println(chunkErr)
 			return nil, chunkErr
+		}
+		if len(req.MicData)+len(chunk.InputAudio) > MaxAudioBufferSize {
+			return nil, fmt.Errorf("audio buffer exceeded limit of %d bytes", MaxAudioBufferSize)
 		}
 		req.MicData = append(req.MicData, chunk.InputAudio...)
 		req.DecodedMicData = append(req.DecodedMicData, req.OpusDecode(chunk.InputAudio)...)
