@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/kercre123/wire-pod/chipper/pkg/fileutil"
 	"github.com/kercre123/wire-pod/chipper/pkg/logger"
 	"github.com/kercre123/wire-pod/chipper/pkg/scripting"
 	"github.com/kercre123/wire-pod/chipper/pkg/vars"
@@ -381,8 +382,14 @@ func handleGenerateCerts(w http.ResponseWriter) {
 }
 
 func saveCustomIntents() {
-	customIntentJSONFile, _ := json.Marshal(vars.CustomIntents)
-	os.WriteFile(vars.CustomIntentsPath, customIntentJSONFile, 0644)
+	customIntentJSONFile, err := json.Marshal(vars.CustomIntents)
+	if err != nil {
+		logger.Println("Error marshaling custom intents:", err)
+		return
+	}
+	if err := fileutil.WriteFileAtomic(vars.CustomIntentsPath, customIntentJSONFile, 0644); err != nil {
+		logger.Println("Error writing custom intents to", vars.CustomIntentsPath, ":", err)
+	}
 }
 
 func DisableCachingAndSniffing(next http.Handler) http.Handler {

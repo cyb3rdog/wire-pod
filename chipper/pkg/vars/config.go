@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 
+	"github.com/kercre123/wire-pod/chipper/pkg/fileutil"
 	"github.com/kercre123/wire-pod/chipper/pkg/logger"
 )
 
@@ -53,10 +54,22 @@ type apiConfig struct {
 	} `json:"dashboard"`
 }
 
+// writeConfig atomically persists APIConfig, logging (rather than silently
+// dropping) marshal or write failures.
+func writeConfig() {
+	writeBytes, err := json.Marshal(APIConfig)
+	if err != nil {
+		logger.Println("Error marshaling API config:", err)
+		return
+	}
+	if err := fileutil.WriteFileAtomic(ApiConfigPath, writeBytes, 0644); err != nil {
+		logger.Println("Error writing API config to", ApiConfigPath, ":", err)
+	}
+}
+
 func WriteConfigToDisk() {
 	logger.Println("Configuration changed, writing to disk")
-	writeBytes, _ := json.Marshal(APIConfig)
-	os.WriteFile(ApiConfigPath, writeBytes, 0644)
+	writeConfig()
 }
 
 func CreateConfigFromEnv() {
@@ -81,8 +94,7 @@ func CreateConfigFromEnv() {
 	}
 	WriteSTT()
 	APIConfig.HasReadFromEnv = true
-	writeBytes, _ := json.Marshal(APIConfig)
-	os.WriteFile(ApiConfigPath, writeBytes, 0644)
+	writeConfig()
 }
 
 func WriteSTT() {
@@ -132,8 +144,7 @@ func ReadConfig() {
 			APIConfig.Knowledge.Model = "meta-llama/Llama-3-70b-chat-hf"
 		}
 
-		writeBytes, _ := json.Marshal(APIConfig)
-		os.WriteFile(ApiConfigPath, writeBytes, 0644)
+		writeConfig()
 		logger.Println("API config successfully read")
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/fforchino/vector-go-sdk/pkg/vector"
+	"github.com/kercre123/wire-pod/chipper/pkg/fileutil"
 	"github.com/kercre123/wire-pod/chipper/pkg/logger"
 	"github.com/sashabaranov/go-openai"
 	"github.com/wlynxg/anet"
@@ -180,9 +181,14 @@ func UpdateBotInfo(fn func(*RobotInfoStore)) error {
 	fn(&BotInfo)
 	writeBytes, err := json.Marshal(BotInfo)
 	if err != nil {
+		logger.Println("Error marshaling bot info:", err)
 		return err
 	}
-	return os.WriteFile(BotInfoPath, writeBytes, 0644)
+	if err := fileutil.WriteFileAtomic(BotInfoPath, writeBytes, 0644); err != nil {
+		logger.Println("Error writing bot info to", BotInfoPath, ":", err)
+		return err
+	}
+	return nil
 }
 
 type RecurringInfoStore struct {
@@ -405,9 +411,19 @@ func LoadIntents() ([]JsonIntent, error) {
 }
 
 // writeJdocsLocked writes BotJdocs to disk. Caller must hold botJdocsMu.
+// writeJdocsLocked persists BotJdocs atomically. Caller must hold botJdocsMu.
+// Failures are logged here rather than silently dropped, since none of the
+// exported functions that call this (WriteJdocs, DeleteData, AddJdoc) return
+// an error today.
 func writeJdocsLocked() {
-	writeBytes, _ := json.Marshal(BotJdocs)
-	os.WriteFile(JdocsPath, writeBytes, 0644)
+	writeBytes, err := json.Marshal(BotJdocs)
+	if err != nil {
+		logger.Println("Error marshaling jdocs:", err)
+		return
+	}
+	if err := fileutil.WriteFileAtomic(JdocsPath, writeBytes, 0644); err != nil {
+		logger.Println("Error writing jdocs to", JdocsPath, ":", err)
+	}
 }
 
 func WriteJdocs() {

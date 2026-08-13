@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/digital-dream-labs/api/go/jdocspb"
+	"github.com/kercre123/wire-pod/chipper/pkg/fileutil"
 	"github.com/kercre123/wire-pod/chipper/pkg/logger"
 	tokenserver "github.com/kercre123/wire-pod/chipper/pkg/servers/token"
 	"github.com/kercre123/wire-pod/chipper/pkg/vars"
@@ -126,9 +127,14 @@ func (s *JdocServer) ReadDocs(ctx context.Context, req *jdocspb.ReadDocsReq) (*j
 					}
 					logger.Println("Outputting session cert to " + fullPath)
 					// export to ~/.anki_vector
-					os.WriteFile(fullPath, tokenserver.SessionWriteStoreCerts[num], 0755)
+					if err := fileutil.WriteFileAtomic(fullPath, tokenserver.SessionWriteStoreCerts[num], 0755); err != nil {
+						logger.Println("Error writing session cert to", fullPath, ":", err)
+					}
 					// export to ./session-certs
-					os.WriteFile(vars.SessionCertPath+"/"+esn, tokenserver.SessionWriteStoreCerts[num], 0755)
+					sessionCertPath := vars.SessionCertPath + "/" + esn
+					if err := fileutil.WriteFileAtomic(sessionCertPath, tokenserver.SessionWriteStoreCerts[num], 0755); err != nil {
+						logger.Println("Error writing session cert to", sessionCertPath, ":", err)
+					}
 					WriteToIniPrimary(pair[1], esn, botGUID, ipAddr)
 					vars.AddToRInfo(esn, pair[1], ipAddr)
 					tokenserver.RemoveFromSessionStore(num)

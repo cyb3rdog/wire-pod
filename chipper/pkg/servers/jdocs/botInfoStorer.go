@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/kercre123/wire-pod/chipper/pkg/fileutil"
 	"github.com/kercre123/wire-pod/chipper/pkg/logger"
 	"github.com/kercre123/wire-pod/chipper/pkg/vars"
 	"google.golang.org/grpc/peer"
@@ -94,12 +95,24 @@ func WriteToIniSecondary(esn, guid, ip string) {
 			logger.Println("The DDL servers are down at the moment. The cert will not be gotten. The Python SDK will not be configured.")
 			return
 		}
-		certBytesOrig, _ := io.ReadAll(resp.Body)
-		os.WriteFile(vars.SessionCertPath+"/"+esn, certBytesOrig, 0777)
+		certBytesOrig, err := io.ReadAll(resp.Body)
+		if err != nil {
+			logger.Println("Error reading session cert response body:", err)
+			return
+		}
+		sessionCertPath := vars.SessionCertPath + "/" + esn
+		if err := fileutil.WriteFileAtomic(sessionCertPath, certBytesOrig, 0644); err != nil {
+			logger.Println("Error writing session cert to", sessionCertPath, ":", err)
+		}
 		block, _ := pem.Decode(certBytesOrig)
+		if block == nil {
+			logger.Println("WriteToIniSecondary: DDL server did not return a valid PEM certificate")
+			return
+		}
 		cert, err := x509.ParseCertificate(block.Bytes)
 		if err != nil {
 			logger.Println(err)
+			return
 		}
 		botName = cert.Issuer.CommonName
 		certPath = vars.SDKIniPath + botName + "-" + esn + ".cert"
