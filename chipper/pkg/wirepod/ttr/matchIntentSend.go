@@ -228,7 +228,7 @@ func pluginFunctionHandler(req interface{}, voiceText string, botSerial string) 
 				logger.Println("Bot " + botSerial + " matched plugin " + PluginNames[num] + ", executing function")
 				var guid string
 				var target string
-				for _, bot := range vars.BotInfo.Robots {
+				for _, bot := range vars.GetBotInfo().Robots {
 					if bot.Esn == botSerial {
 						guid = bot.GUID
 						target = bot.IPAddress + ":443"

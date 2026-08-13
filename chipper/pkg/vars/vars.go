@@ -70,6 +70,7 @@ var VoskGrammerEnable bool = false
 var botJdocsMu sync.RWMutex // Protects BotJdocs
 var rememberedChatsMu sync.RWMutex
 var recurringInfoMu sync.RWMutex // Protects RecurringInfo
+var botInfoMu sync.RWMutex       // Protects BotInfo
 
 // here to prevent import cycle (localization restructure)
 var SttInitFunc func() error
@@ -149,15 +150,39 @@ type RememberedChat struct {
 
 var RememberedChats []RememberedChat
 
+type RobotEntry struct {
+	Esn       string `json:"esn"`
+	IPAddress string `json:"ip_address"`
+	// 192.168.1.150:443
+	GUID      string `json:"guid"`
+	Activated bool   `json:"activated"`
+}
+
 type RobotInfoStore struct {
-	GlobalGUID string `json:"global_guid"`
-	Robots     []struct {
-		Esn       string `json:"esn"`
-		IPAddress string `json:"ip_address"`
-		// 192.168.1.150:443
-		GUID      string `json:"guid"`
-		Activated bool   `json:"activated"`
-	} `json:"robots"`
+	GlobalGUID string       `json:"global_guid"`
+	Robots     []RobotEntry `json:"robots"`
+}
+
+// GetBotInfo returns a snapshot copy of BotInfo safe for read-only use.
+func GetBotInfo() RobotInfoStore {
+	botInfoMu.RLock()
+	defer botInfoMu.RUnlock()
+	cp := BotInfo
+	cp.Robots = make([]RobotEntry, len(BotInfo.Robots))
+	copy(cp.Robots, BotInfo.Robots)
+	return cp
+}
+
+// UpdateBotInfo runs fn with exclusive access to BotInfo, then persists it to BotInfoPath.
+func UpdateBotInfo(fn func(*RobotInfoStore)) error {
+	botInfoMu.Lock()
+	defer botInfoMu.Unlock()
+	fn(&BotInfo)
+	writeBytes, err := json.Marshal(BotInfo)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(BotInfoPath, writeBytes, 0644)
 }
 
 type RecurringInfoStore struct {

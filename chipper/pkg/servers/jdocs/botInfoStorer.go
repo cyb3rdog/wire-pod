@@ -3,7 +3,6 @@ package jdocsserver
 import (
 	"context"
 	"crypto/x509"
-	"encoding/json"
 	"encoding/pem"
 	"io"
 	"net/http"
@@ -17,7 +16,7 @@ import (
 )
 
 func IsBotInInfo(esn string) bool {
-	for _, robot := range vars.BotInfo.Robots {
+	for _, robot := range vars.GetBotInfo().Robots {
 		if esn == strings.TrimSpace(strings.ToLower(robot.Esn)) {
 			return true
 		}
@@ -128,26 +127,21 @@ func WriteToIniSecondary(esn, guid, ip string) {
 }
 
 func StoreBotInfo(ctx context.Context, thing string) {
-	var appendNew bool = true
 	p, _ := peer.FromContext(ctx)
 	ipAddr := strings.TrimSpace(strings.Split(p.Addr.String(), ":")[0])
 	botEsn := strings.TrimSpace(strings.Split(thing, ":")[1])
-	vars.BotInfo.GlobalGUID = "tni1TRsTRTaNSapjo0Y+Sw=="
-	for num, robot := range vars.BotInfo.Robots {
-		if robot.Esn == botEsn {
-			appendNew = false
-			vars.BotInfo.Robots[num].IPAddress = ipAddr
+	vars.UpdateBotInfo(func(bi *vars.RobotInfoStore) {
+		appendNew := true
+		bi.GlobalGUID = "tni1TRsTRTaNSapjo0Y+Sw=="
+		for num, robot := range bi.Robots {
+			if robot.Esn == botEsn {
+				appendNew = false
+				bi.Robots[num].IPAddress = ipAddr
+			}
 		}
-	}
-	if appendNew {
-		logger.Println("Adding " + botEsn + " to bot info store")
-		vars.BotInfo.Robots = append(vars.BotInfo.Robots, struct {
-			Esn       string `json:"esn"`
-			IPAddress string `json:"ip_address"`
-			GUID      string `json:"guid"`
-			Activated bool   `json:"activated"`
-		}{Esn: botEsn, IPAddress: ipAddr, GUID: "", Activated: false})
-	}
-	finalJsonBytes, _ := json.Marshal(vars.BotInfo)
-	os.WriteFile(vars.BotInfoPath, finalJsonBytes, 0644)
+		if appendNew {
+			logger.Println("Adding " + botEsn + " to bot info store")
+			bi.Robots = append(bi.Robots, vars.RobotEntry{Esn: botEsn, IPAddress: ipAddr, GUID: "", Activated: false})
+		}
+	})
 }

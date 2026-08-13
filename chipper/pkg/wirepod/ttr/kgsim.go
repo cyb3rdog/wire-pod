@@ -195,7 +195,7 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 	var robot *vector.Vector
 	var guid string
 	var target string
-	for _, bot := range vars.BotInfo.Robots {
+	for _, bot := range vars.GetBotInfo().Robots {
 		if esn == bot.Esn {
 			guid = bot.GUID
 			target = bot.IPAddress + ":443"
@@ -532,7 +532,7 @@ func KGSim(esn string, textToSay string) error {
 	var robot *vector.Vector
 	var guid string
 	var target string
-	for _, bot := range vars.BotInfo.Robots {
+	for _, bot := range vars.GetBotInfo().Robots {
 		if esn == bot.Esn {
 			guid = bot.GUID
 			target = bot.IPAddress + ":443"

@@ -42,14 +42,15 @@ func newRobot(serial string) (Robot, int, error) {
 
 	// find robot info in BotInfo
 	matched := false
-	for _, robot := range vars.BotInfo.Robots {
+	botInfo := vars.GetBotInfo()
+	for _, robot := range botInfo.Robots {
 		if strings.EqualFold(serial, robot.Esn) {
 			RobotObj.ESN = strings.TrimSpace(strings.ToLower(serial))
 			RobotObj.Target = robot.IPAddress + ":443"
 			matched = true
 			if robot.GUID == "" {
-				robot.GUID = vars.BotInfo.GlobalGUID
-				RobotObj.GUID = vars.BotInfo.GlobalGUID
+				robot.GUID = botInfo.GlobalGUID
+				RobotObj.GUID = botInfo.GlobalGUID
 			} else {
 				RobotObj.GUID = robot.GUID
 			}
@@ -187,7 +188,7 @@ func NewWP(serial string, useGlobal bool) (*vector.Vector, error) {
 		return nil, fmt.Errorf("serial string missing")
 	}
 	matched := false
-	for _, robot := range vars.BotInfo.Robots {
+	for _, robot := range vars.GetBotInfo().Robots {
 		if strings.EqualFold(serial, robot.Esn) {
 			matched = true
 			target = robot.IPAddress + ":443"

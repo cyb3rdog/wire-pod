@@ -42,7 +42,7 @@ func pingJdocs(target string) {
 	target = strings.Split(target, ":")[0]
 	var serial string
 	matched := false
-	for _, robot := range vars.BotInfo.Robots {
+	for _, robot := range vars.GetBotInfo().Robots {
 		if strings.TrimSpace(strings.ToLower(robot.IPAddress)) == strings.TrimSpace(strings.ToLower(target)) {
 			matched = true
 			serial = robot.Esn
@@ -116,7 +116,7 @@ func InitJdocsPinger() {
 func ShouldPingJdocs(target string) bool {
 	var esn, guid, botip string
 	matched := false
-	for _, bot := range vars.BotInfo.Robots {
+	for _, bot := range vars.GetBotInfo().Robots {
 		if target == bot.IPAddress {
 			esn = bot.Esn
 			guid = bot.GUID
@@ -168,7 +168,7 @@ func connCheck(w http.ResponseWriter, r *http.Request) {
 		if PingerEnabled {
 			//logger.Println("connCheck request from " + r.RemoteAddr)
 			robotTarget := strings.Split(r.RemoteAddr, ":")[0]
-			jsonB, _ := json.Marshal(vars.BotInfo)
+			jsonB, _ := json.Marshal(vars.GetBotInfo())
 			json := string(jsonB)
 			if strings.Contains(json, strings.TrimSpace(robotTarget)) {
 				ping := ShouldPingJdocs(robotTarget)
@@ -206,14 +206,14 @@ func RunMDNS(botIP string) {
 		for _, rinf := range vars.GetRecurringInfo() {
 			if rinf.ID == robotID {
 				vars.AddToRInfo(rinf.ESN, robotID, fmt.Sprint(entry.AddrIPv4[0]))
-				for i, rob := range vars.BotInfo.Robots {
-					if rob.Esn == rinf.ESN {
-						vars.BotInfo.Robots[i].IPAddress = fmt.Sprint(entry.AddrIPv4[0])
-						jsonBytes, _ := json.Marshal(vars.BotInfo)
-						fmt.Println("Updating robot " + robotID)
-						go os.WriteFile(vars.BotInfoPath, jsonBytes, 0777)
+				vars.UpdateBotInfo(func(bi *vars.RobotInfoStore) {
+					for i, rob := range bi.Robots {
+						if rob.Esn == rinf.ESN {
+							bi.Robots[i].IPAddress = fmt.Sprint(entry.AddrIPv4[0])
+							fmt.Println("Updating robot " + robotID)
+						}
 					}
-				}
+				})
 				go func() {
 					// wait for escapepod.local trasmit
 					if vars.APIConfig.Server.EPConfig {

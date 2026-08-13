@@ -179,7 +179,7 @@ func ParamChecker(req interface{}, intent string, speechText string, botSerial s
 			var guid string
 			var target string
 			matched := false
-			for _, bot := range vars.BotInfo.Robots {
+			for _, bot := range vars.GetBotInfo().Robots {
 				if botSerial == bot.Esn {
 					guid = bot.GUID
 					target = bot.IPAddress + ":443"
