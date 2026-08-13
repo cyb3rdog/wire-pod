@@ -81,6 +81,8 @@ func TestSetupThenLoginFlow(t *testing.T) {
 func TestWrapBlocksProtectedPathsWithoutSession(t *testing.T) {
 	resetPassword(t)
 	vars.APIConfig.Dashboard.PasswordHash = "$2a$10$abcdefghijklmnopqrstuv" // any non-empty hash
+	vars.APIConfig.PastInitialSetup = true
+	defer func() { vars.APIConfig.PastInitialSetup = false }()
 
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -105,6 +107,33 @@ func TestWrapBlocksProtectedPathsWithoutSession(t *testing.T) {
 		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, c.path, nil))
 		if rec.Code != c.wantStatus {
 			t.Errorf("%s: expected %d, got %d", c.path, c.wantStatus, rec.Code)
+		}
+	}
+}
+
+// TestWrapOpenBeforeInitialSetup guards against gating wire-pod's own
+// first-run wizard (initial.html) behind a password that can't exist yet --
+// initial.html's calls (through /api-chipper/ and /api/) have to work
+// before anyone has had a chance to set one.
+func TestWrapOpenBeforeInitialSetup(t *testing.T) {
+	resetPassword(t)
+	vars.APIConfig.PastInitialSetup = false
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := Wrap(next)
+
+	for _, path := range []string{
+		"/api/get_config",
+		"/api/set_stt_info",
+		"/api-chipper/use_ep",
+		"/api/get_download_status",
+	} {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusOK {
+			t.Errorf("%s: expected 200 before initial setup, got %d", path, rec.Code)
 		}
 	}
 }

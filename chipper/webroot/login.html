@@ -70,6 +70,10 @@
     fetch("/api/auth/status", { credentials: "same-origin" })
       .then(function (res) { return res.json(); })
       .then(function (status) {
+        if (!status.pastInitialSetup) {
+          window.location.replace("/initial.html");
+          return;
+        }
         if (status.authenticated) {
           window.location.replace("/");
           return;

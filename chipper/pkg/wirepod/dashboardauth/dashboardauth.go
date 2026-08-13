@@ -94,6 +94,15 @@ var publicAuthPaths = map[string]bool{
 }
 
 func isProtected(path string) bool {
+	// Wire-pod's own first-run wizard (initial.html: escape-pod/IP mode,
+	// STT language) has to run before an admin account can mean anything --
+	// there's no owner to gate against yet, and its own calls (through
+	// /api-chipper/ and /api/) would otherwise be locked out by the very
+	// setup that's supposed to configure the server. Nothing is gated until
+	// that's done.
+	if !vars.APIConfig.PastInitialSetup {
+		return false
+	}
 	if publicAuthPaths[path] {
 		return false
 	}
@@ -185,15 +194,21 @@ func writeJSONError(w http.ResponseWriter, status int, msg string) {
 }
 
 type statusResponse struct {
-	Initialized   bool `json:"initialized"`
-	Authenticated bool `json:"authenticated"`
+	// PastInitialSetup mirrors vars.APIConfig.PastInitialSetup: wire-pod's
+	// own first-run wizard (initial.html) hasn't run yet, so there's
+	// nothing to log into. The frontend defers to that wizard's own
+	// redirect until this is true.
+	PastInitialSetup bool `json:"pastInitialSetup"`
+	Initialized      bool `json:"initialized"`
+	Authenticated    bool `json:"authenticated"`
 }
 
 func handleStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(statusResponse{
-		Initialized:   passwordSet(),
-		Authenticated: validSession(r),
+		PastInitialSetup: vars.APIConfig.PastInitialSetup,
+		Initialized:      passwordSet(),
+		Authenticated:    validSession(r),
 	})
 }
 
