@@ -291,8 +291,9 @@ func (req *SpeechRequest) GetNextStreamChunk() ([]byte, error) {
 			return nil, fmt.Errorf("audio buffer exceeded limit of %d bytes", MaxAudioBufferSize)
 		}
 		req.MicData = append(req.MicData, chunk.InputAudio...)
-		req.DecodedMicData = append(req.DecodedMicData, req.OpusDecode(chunk.InputAudio)...)
-		req.FilteredMicData = append(req.FilteredMicData, highPassFilter(req.OpusDecode(chunk.InputAudio))...)
+		decoded := req.OpusDecode(chunk.InputAudio)
+		req.DecodedMicData = append(req.DecodedMicData, decoded...)
+		req.FilteredMicData = append(req.FilteredMicData, highPassFilter(decoded)...)
 		dataReturn := req.DecodedMicData[req.PrevLen:]
 		req.LastAudioChunk = req.FilteredMicData[req.PrevLen:]
 		req.PrevLen = len(req.DecodedMicData)
@@ -308,8 +309,9 @@ func (req *SpeechRequest) GetNextStreamChunk() ([]byte, error) {
 			return nil, fmt.Errorf("audio buffer exceeded limit of %d bytes", MaxAudioBufferSize)
 		}
 		req.MicData = append(req.MicData, chunk.InputAudio...)
-		req.DecodedMicData = append(req.DecodedMicData, req.OpusDecode(chunk.InputAudio)...)
-		req.FilteredMicData = append(req.FilteredMicData, highPassFilter(req.OpusDecode(chunk.InputAudio))...)
+		decoded := req.OpusDecode(chunk.InputAudio)
+		req.DecodedMicData = append(req.DecodedMicData, decoded...)
+		req.FilteredMicData = append(req.FilteredMicData, highPassFilter(decoded)...)
 		dataReturn := req.DecodedMicData[req.PrevLen:]
 		req.LastAudioChunk = req.FilteredMicData[req.PrevLen:]
 		req.PrevLen = len(req.DecodedMicData)
@@ -328,8 +330,9 @@ func (req *SpeechRequest) GetNextStreamChunk() ([]byte, error) {
 			return nil, fmt.Errorf("audio buffer exceeded limit of %d bytes", MaxAudioBufferSize)
 		}
 		req.MicData = append(req.MicData, chunk.InputAudio...)
-		req.DecodedMicData = append(req.DecodedMicData, req.OpusDecode(chunk.InputAudio)...)
-		req.FilteredMicData = append(req.FilteredMicData, highPassFilter(req.OpusDecode(chunk.InputAudio))...)
+		decoded := req.OpusDecode(chunk.InputAudio)
+		req.DecodedMicData = append(req.DecodedMicData, decoded...)
+		req.FilteredMicData = append(req.FilteredMicData, highPassFilter(decoded)...)
 		dataReturn := req.DecodedMicData[req.PrevLen:]
 		req.LastAudioChunk = req.FilteredMicData[req.PrevLen:]
 		req.PrevLen = len(req.DecodedMicData)
