@@ -40,7 +40,24 @@ sudo ./chipper/start.sh
 
 Open the web UI at `http://<host>:8080` to pair your Vector robot and pick an STT engine/language (BLE setup or escape-pod mode, depending on your robot's firmware).
 
-The initial setup page's "Connection Method" has a third option, **Custom Host**, for robots that reach wire-pod through something other than local mDNS or its auto-detected LAN IP -- e.g. a domain forwarded through a reverse proxy. wire-pod's self-signed cert (`certs/cert.crt`) only ever carries one identity: whatever address it's told the robot will actually dial, either as an `IPAddresses` SAN (auto-detected IP mode, or a literal IP given as a custom host) or a `DNSNames` SAN (a custom host that's a domain). "Escape Pod" mode hardcodes `escapepod.local`, which only resolves over local mDNS and was never in the cert's SAN at all -- if you're not on the same LAN segment as wire-pod, use Custom Host with the exact domain (or public IP) the robot will connect to instead, so what the robot dials and what the cert claims to be actually match. This also regenerates `certs/server_config.json` (the file you load onto the robot for manual/BLE pairing) with that same host baked into its `jdocs`/`tms`/`chipper`/`check` fields.
+### Reaching wire-pod through a custom domain (reverse proxy / external access)
+
+wire-pod's self-signed cert (`certs/cert.crt`) only ever carries one identity: whatever address it's told the robot will actually dial, either as an `IPAddresses` SAN (auto-detected LAN IP) or a `DNSNames` SAN (a domain). "Escape Pod" mode hardcodes `escapepod.local`, which only resolves over local mDNS and was never in the cert's SAN at all -- if the robot isn't on the same LAN segment as wire-pod (e.g. reached through a domain forwarded via Caddy/nginx), what it dials and what the cert claims to be need to be the same value, or the robot's TLS validation rejects the connection ("certificate is valid for escapepod.local, not your-domain").
+
+**Recommended: declare it before first boot**, the same way STT/Knowledge/Weather are seeded -- set in `compose.yaml`/`.env`:
+
+```
+WIREPOD_HOST_OVERRIDE=wirepod.example.com
+WIREPOD_SERVER_PORT=443   # optional, defaults to 443 (already published below)
+```
+
+then start (or restart, on a genuinely fresh `./data`) the container. The correct cert gets generated before the gRPC server ever binds -- no need to touch `initial.html` at all. Like every other setting in this list, this only ever seeds a *fresh* setup: once a cert exists on disk, it's left alone on every later restart, whether that's still this same value or something changed afterward through the dashboard.
+
+If you set `WIREPOD_SERVER_PORT` to anything other than 443, you also need to add a matching entry to `compose.yaml`'s `ports:` section yourself -- Docker doesn't publish a port nothing declares, and wire-pod binding it internally doesn't make it reachable on its own.
+
+**Alternative: change it after the fact**, without wiping `./data` -- the initial setup page's "Connection Method" has a third option, **Custom Host**, that does the same regeneration (cert + `certs/server_config.json`) against an already-configured server. Since `initial.html`'s form is otherwise a first-run-only page, reaching it again on an already-set-up server requires logging in first (it'll redirect you to `/login.html` automatically if needed).
+
+Either way, deploying the robot side needs **two** files, not just `server_config.json`: also copy the regenerated `certs/cert.crt` onto the robot (the dashboard's "Bot Setup" SSH page does this automatically for dev-unlocked robots; see `chipper/pkg/wirepod/setup/ssh.go` for the manual file paths otherwise) -- `server_config.json` alone only tells the robot where to connect, not what to trust when it gets there.
 
 ## Security note
 

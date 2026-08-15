@@ -214,6 +214,21 @@ apply_env_overrides() {
         update_export "WEATHERAPI_UNIT" "${WIREPOD_WEATHERAPI_UNIT}" "${source_file}"
     fi
 
+    # Connection method (jdocs/tms/chipper/check endpoints, and the TLS
+    # cert's SAN) for deployments reached through something other than
+    # local mDNS ("escapepod.local") or wire-pod's own auto-detected LAN
+    # IP -- e.g. a domain behind a reverse proxy. Like everything else in
+    # this section, only seeds a genuinely fresh setup (no cert on disk
+    # yet); change it afterward from initial.html's connection-method
+    # form or the dashboard, not by editing this and restarting.
+    if [ -n "${WIREPOD_HOST_OVERRIDE:-}" ]; then
+        update_export "HOST_OVERRIDE" "${WIREPOD_HOST_OVERRIDE}" "${source_file}"
+    fi
+
+    if [ -n "${WIREPOD_SERVER_PORT:-}" ]; then
+        update_export "SERVER_PORT" "${WIREPOD_SERVER_PORT}" "${source_file}"
+    fi
+
     # These have no dashboard equivalent at all -- they're read directly
     # via os.Getenv at the point of use, every time, with no config-file
     # persistence -- so unlike everything above, they apply live on every

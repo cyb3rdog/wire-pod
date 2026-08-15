@@ -1,9 +1,14 @@
 package initwirepod
 
 import (
+	"crypto/x509"
+	"encoding/pem"
 	"net"
+	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/kercre123/wire-pod/chipper/pkg/vars"
 	"github.com/soheilhy/cmux"
 )
 
@@ -84,5 +89,96 @@ func TestCloseServersPartialNilSafe(t *testing.T) {
 
 	if _, err := lOne.Accept(); err == nil {
 		t.Error("listenerOne.Accept() succeeded after closeServers, want an error (listener should be closed)")
+	}
+}
+
+func withTempVarsPaths(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	origCerts, origCertPath, origKeyPath, origServerConfigPath := vars.Certs, vars.CertPath, vars.KeyPath, vars.ServerConfigPath
+	origApiConfigPath := vars.ApiConfigPath
+	origServer := vars.APIConfig.Server
+	t.Cleanup(func() {
+		vars.Certs, vars.CertPath, vars.KeyPath, vars.ServerConfigPath = origCerts, origCertPath, origKeyPath, origServerConfigPath
+		vars.ApiConfigPath = origApiConfigPath
+		vars.APIConfig.Server = origServer
+	})
+	vars.Certs = filepath.Join(dir, "certs")
+	vars.CertPath = filepath.Join(dir, "certs", "cert.crt")
+	vars.KeyPath = filepath.Join(dir, "certs", "cert.key")
+	vars.ServerConfigPath = filepath.Join(dir, "certs", "server_config.json")
+	// ensureCertForHostOverride's success path calls vars.WriteConfigToDisk,
+	// which would otherwise write to the real default ("./apiConfig.json",
+	// relative to the test binary's CWD) and leave a stray file in the
+	// source tree.
+	vars.ApiConfigPath = filepath.Join(dir, "apiConfig.json")
+}
+
+// TestEnsureCertForHostOverrideGeneratesCert is the end-to-end proof for
+// the declarative deploy path: HOST_OVERRIDE seeds Server.HostOverride
+// (vars.CreateConfigFromEnv), and this is what's supposed to turn that
+// into an actual, correctly-SAN'd cert before the first StartChipper call
+// -- no trip through initial.html required.
+func TestEnsureCertForHostOverrideGeneratesCert(t *testing.T) {
+	withTempVarsPaths(t)
+	vars.APIConfig.Server.HostOverride = "wirepod.example.com"
+	vars.APIConfig.Server.Port = "443"
+	vars.APIConfig.Server.EPConfig = false
+
+	ensureCertForHostOverride()
+
+	pemBytes, err := os.ReadFile(vars.CertPath)
+	if err != nil {
+		t.Fatalf("cert was not generated: %v", err)
+	}
+	block, _ := pem.Decode(pemBytes)
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		t.Fatalf("parsing generated cert: %v", err)
+	}
+	if err := cert.VerifyHostname("wirepod.example.com"); err != nil {
+		t.Errorf("VerifyHostname(wirepod.example.com) = %v, want nil", err)
+	}
+
+	if _, err := os.Stat(vars.ServerConfigPath); err != nil {
+		t.Errorf("server_config.json was not generated: %v", err)
+	}
+}
+
+// TestEnsureCertForHostOverrideSkipsWhenCertExists guards against
+// clobbering a cert that's already correct for the current config on
+// every subsequent restart -- HOST_OVERRIDE (like every other env-seeded
+// setting) should only ever take effect on a genuinely fresh setup.
+func TestEnsureCertForHostOverrideSkipsWhenCertExists(t *testing.T) {
+	withTempVarsPaths(t)
+	vars.APIConfig.Server.HostOverride = "wirepod.example.com"
+	os.MkdirAll(vars.Certs, 0777)
+	const sentinel = "not a real cert, just proving this wasn't touched"
+	if err := os.WriteFile(vars.CertPath, []byte(sentinel), 0644); err != nil {
+		t.Fatalf("seeding existing cert file: %v", err)
+	}
+
+	ensureCertForHostOverride()
+
+	got, err := os.ReadFile(vars.CertPath)
+	if err != nil {
+		t.Fatalf("reading cert: %v", err)
+	}
+	if string(got) != sentinel {
+		t.Error("ensureCertForHostOverride regenerated an already-existing cert, want it left untouched")
+	}
+}
+
+// TestEnsureCertForHostOverrideNoopWithoutOverride guards the common
+// case (Escape Pod/plain IP mode, no HOST_OVERRIDE set at all) -- must do
+// nothing, not even touch the filesystem.
+func TestEnsureCertForHostOverrideNoopWithoutOverride(t *testing.T) {
+	withTempVarsPaths(t)
+	vars.APIConfig.Server.HostOverride = ""
+
+	ensureCertForHostOverride()
+
+	if _, err := os.Stat(vars.CertPath); err == nil {
+		t.Error("ensureCertForHostOverride generated a cert with no HostOverride set")
 	}
 }

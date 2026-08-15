@@ -116,6 +116,28 @@ func CreateConfigFromEnv() {
 	} else {
 		APIConfig.Knowledge.Enable = false
 	}
+	// HOST_OVERRIDE lets a deployment behind a reverse proxy/external
+	// domain declare that up front, the same way every other setting
+	// here seeds once from the environment -- instead of requiring a
+	// visit to initial.html's connection-method form (which reconfigures
+	// an already-running server) just to get the very first cert right.
+	// Skipping straight to PastInitialSetup=true here means the normal
+	// StartFromProgramInit flow calls StartChipper directly on this same
+	// boot, with the correct cert already in place -- see
+	// initwirepod.BeginWirepodSpecific, which generates that cert (this
+	// package can't import the code that does, see botsetup) once it
+	// observes HostOverride set with no cert on disk yet.
+	if host := os.Getenv("HOST_OVERRIDE"); host != "" {
+		APIConfig.Server.HostOverride = host
+		APIConfig.Server.EPConfig = false
+		APIConfig.Server.Port = os.Getenv("SERVER_PORT")
+		if APIConfig.Server.Port == "" {
+			// Matches compose.yaml's default published port -- anything
+			// else requires also publishing that port there.
+			APIConfig.Server.Port = "443"
+		}
+		APIConfig.PastInitialSetup = true
+	}
 	WriteSTT()
 	APIConfig.HasReadFromEnv = true
 	writeConfig()

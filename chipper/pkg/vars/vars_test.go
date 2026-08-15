@@ -75,6 +75,92 @@ func TestPort8084EnabledInvertedSense(t *testing.T) {
 	}
 }
 
+// TestCreateConfigFromEnvHostOverride guards the declarative Custom Host
+// deploy path: HOST_OVERRIDE should seed Server.HostOverride/EPConfig/
+// Port and, critically, PastInitialSetup=true -- without that last part,
+// StartFromProgramInit would still refuse to start the chipper server and
+// insist on a trip through initial.html despite the connection being
+// fully specified already.
+func TestCreateConfigFromEnvHostOverride(t *testing.T) {
+	origPath := ApiConfigPath
+	ApiConfigPath = t.TempDir() + "/apiConfig.json"
+	t.Cleanup(func() {
+		os.Unsetenv("HOST_OVERRIDE")
+		os.Unsetenv("SERVER_PORT")
+		APIConfig = apiConfig{}
+		ApiConfigPath = origPath
+	})
+
+	os.Setenv("HOST_OVERRIDE", "wirepod.example.com")
+	os.Setenv("SERVER_PORT", "8443")
+	APIConfig = apiConfig{}
+	CreateConfigFromEnv()
+
+	if APIConfig.Server.HostOverride != "wirepod.example.com" {
+		t.Errorf("HostOverride = %q, want wirepod.example.com", APIConfig.Server.HostOverride)
+	}
+	if APIConfig.Server.EPConfig {
+		t.Error("EPConfig = true, want false when HOST_OVERRIDE is set")
+	}
+	if APIConfig.Server.Port != "8443" {
+		t.Errorf("Port = %q, want 8443", APIConfig.Server.Port)
+	}
+	if !APIConfig.PastInitialSetup {
+		t.Error("PastInitialSetup = false, want true -- HOST_OVERRIDE fully specifies the connection, no wizard trip needed")
+	}
+}
+
+// TestCreateConfigFromEnvHostOverrideDefaultPort guards the port default:
+// unset SERVER_PORT must fall back to 443, matching compose.yaml's
+// default published port so the common case doesn't silently need an
+// unpublished port.
+func TestCreateConfigFromEnvHostOverrideDefaultPort(t *testing.T) {
+	origPath := ApiConfigPath
+	ApiConfigPath = t.TempDir() + "/apiConfig.json"
+	t.Cleanup(func() {
+		os.Unsetenv("HOST_OVERRIDE")
+		APIConfig = apiConfig{}
+		ApiConfigPath = origPath
+	})
+
+	os.Setenv("HOST_OVERRIDE", "wirepod.example.com")
+	os.Unsetenv("SERVER_PORT")
+	APIConfig = apiConfig{}
+	CreateConfigFromEnv()
+
+	if APIConfig.Server.Port != "443" {
+		t.Errorf("Port = %q, want 443 (default)", APIConfig.Server.Port)
+	}
+}
+
+// TestCreateConfigFromEnvNoHostOverride guards the unchanged default:
+// without HOST_OVERRIDE, Server fields must stay at their zero value --
+// existing Escape Pod/IP-mode deployments (and the wizard flow) must see
+// no behavior change at all.
+func TestCreateConfigFromEnvNoHostOverride(t *testing.T) {
+	origPath := ApiConfigPath
+	ApiConfigPath = t.TempDir() + "/apiConfig.json"
+	t.Cleanup(func() {
+		APIConfig = apiConfig{}
+		ApiConfigPath = origPath
+	})
+
+	os.Unsetenv("HOST_OVERRIDE")
+	os.Unsetenv("SERVER_PORT")
+	APIConfig = apiConfig{}
+	CreateConfigFromEnv()
+
+	if APIConfig.Server.HostOverride != "" {
+		t.Errorf("HostOverride = %q, want empty", APIConfig.Server.HostOverride)
+	}
+	if APIConfig.Server.EPConfig {
+		t.Error("EPConfig = true, want false (zero value) with no env vars set")
+	}
+	if APIConfig.PastInitialSetup {
+		t.Error("PastInitialSetup = true, want false -- still needs the wizard without HOST_OVERRIDE")
+	}
+}
+
 // TestDeleteDataNoDeadlock guards against a regression of the
 // DeleteData -> WriteJdocs reentrant-lock deadlock: DeleteData held
 // botJdocsMu.Lock() and then called WriteJdocs(), which locked the

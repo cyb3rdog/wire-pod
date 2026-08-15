@@ -48,6 +48,19 @@ services:
       WIREPOD_WEATHERAPI_KEY: ${WIREPOD_WEATHERAPI_KEY:-}
       WIREPOD_WEATHERAPI_UNIT: ${WIREPOD_WEATHERAPI_UNIT:-}
 
+      # Set this if wire-pod is reached through a domain other than local
+      # mDNS ("escapepod.local") or its own auto-detected LAN IP -- e.g.
+      # behind a reverse proxy exposing only :443 externally. Generates
+      # the TLS cert with this exact domain as its SAN and writes it into
+      # server_config.json, on first boot only, so the very first cert is
+      # already correct -- no need to visit initial.html's connection
+      # method form at all. Leave WIREPOD_SERVER_PORT unset to use 443
+      # (already published below); set it only if you're also adding a
+      # matching entry to the `ports:` section below, since Docker won't
+      # publish a port nothing here declares.
+      WIREPOD_HOST_OVERRIDE: ${WIREPOD_HOST_OVERRIDE:-}
+      WIREPOD_SERVER_PORT: ${WIREPOD_SERVER_PORT:-}
+
       # These have no dashboard settings page at all, so unlike everything
       # above they apply live on every restart, not just the first boot.
       # VOSK_THERMAL_ENABLED/VOSK_WITH_GRAMMER only affect the Vosk

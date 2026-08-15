@@ -23,6 +23,7 @@ import (
 	wpweb "github.com/kercre123/wire-pod/chipper/pkg/wirepod/config-ws"
 	wp "github.com/kercre123/wire-pod/chipper/pkg/wirepod/preqs"
 	sdkWeb "github.com/kercre123/wire-pod/chipper/pkg/wirepod/sdkapp"
+	botsetup "github.com/kercre123/wire-pod/chipper/pkg/wirepod/setup"
 	"github.com/soheilhy/cmux"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -125,6 +126,7 @@ func BeginWirepodSpecific(sttInitFunc func() error, sttHandlerFunc interface{}, 
 
 	// begin wirepod stuff
 	vars.Init()
+	ensureCertForHostOverride()
 	var err error
 	voiceProcessor, err = wp.New(sttInitFunc, sttHandlerFunc, voiceProcessorName)
 	// BeginServer always binds :80 -- even with SDK_ENABLED=false, it
@@ -138,6 +140,35 @@ func BeginWirepodSpecific(sttInitFunc func() error, sttHandlerFunc interface{}, 
 		return err
 	}
 	return nil
+}
+
+// ensureCertForHostOverride generates the TLS cert/server_config.json for
+// a HOST_OVERRIDE-seeded deployment (vars.CreateConfigFromEnv) before the
+// first StartChipper call, so that call already has the right cert --
+// instead of requiring a trip through initial.html's connection-method
+// form, which reconfigures an already-started server. That code
+// (botsetup) imports vars, so vars can't call it directly and do this
+// itself inside CreateConfigFromEnv.
+//
+// Only fires when no cert exists yet: on every later boot, the persisted
+// config (and its cert) already reflect whatever's current, whether
+// that's still this same HOST_OVERRIDE or a domain since changed via
+// initial.html/the dashboard -- env vars only ever seed a genuinely fresh
+// setup, same as every other setting in this codebase.
+func ensureCertForHostOverride() {
+	if vars.APIConfig.Server.HostOverride == "" {
+		return
+	}
+	if _, err := os.Stat(vars.CertPath); err == nil {
+		return
+	}
+	logger.Println("HOST_OVERRIDE set with no cert on disk yet -- generating one for " + vars.APIConfig.Server.HostOverride)
+	if err := botsetup.CreateCertCombo(); err != nil {
+		logger.Println("failed to generate cert for HOST_OVERRIDE:", err)
+		return
+	}
+	botsetup.CreateServerConfig()
+	vars.WriteConfigToDisk()
 }
 
 func StartFromProgramInit(sttInitFunc func() error, sttHandlerFunc interface{}, voiceProcessorName string) {
