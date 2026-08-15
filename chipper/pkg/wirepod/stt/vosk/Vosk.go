@@ -71,6 +71,15 @@ var (
 	totalSleepTime atomic.Int64
 )
 
+// thermalManagementEnabled controls the whole thermal-throttling/idle-sleep
+// subsystem: temperature polling, the background idle monitor, and the
+// per-request throttle wait. It was tuned for the RPi Zero 2W and is pure
+// overhead (added latency, a background goroutine, /sys reads) on anything
+// else, e.g. Docker on a normal server or NAS. Defaults to on, preserving
+// existing behavior; set VOSK_THERMAL_MANAGEMENT=false to disable it
+// entirely.
+var thermalManagementEnabled = os.Getenv("VOSK_THERMAL_MANAGEMENT") != "false"
+
 // =============================================================================
 // THERMAL MANAGEMENT FUNCTIONS
 // =============================================================================
@@ -100,8 +109,14 @@ func GetCPUTemperature() float64 {
 	return 0 // Unable to read temperature
 }
 
-// UpdateThermalState checks current conditions and adjusts throttling
+// UpdateThermalState checks current conditions and adjusts throttling. A
+// no-op when thermalManagementEnabled is false, which keeps
+// thermalPressure permanently at 0 -- so ShouldThrottle/GetThrottleDelay
+// stay inert too, without each needing their own guard.
 func UpdateThermalState() {
+	if !thermalManagementEnabled {
+		return
+	}
 	temp := GetCPUTemperature()
 
 	var pressure int32
@@ -273,6 +288,14 @@ var Name string = "vosk"
 var model *vosk.VoskModel
 var recsmu sync.Mutex
 var grmRecs []ARec
+
+// idleMonitorStop stops the idle-monitor goroutine started by the most
+// recent Init() call, if any. Init() can now run more than once per
+// process lifetime -- switching STT.Service back and forth via the
+// dashboard re-invokes it through stt/dispatch -- so without closing the
+// previous one here, each reinit would leak another background goroutine
+// (with its own ticker) that nothing could ever stop again.
+var idleMonitorStop chan struct{}
 var gpRecs []ARec
 var modelLoaded bool
 var Grammer string
@@ -301,6 +324,10 @@ func Init() error {
 			gpRecs = []ARec{}
 			grmRecs = []ARec{}
 			model.Free()
+			if idleMonitorStop != nil {
+				close(idleMonitorStop)
+				idleMonitorStop = nil
+			}
 		}
 		sttLanguage := vars.APIConfig.STT.Language
 		if len(sttLanguage) == 0 {
@@ -351,8 +378,10 @@ func Init() error {
 		recentRequests = make([]time.Time, 0, ActivityWindowSize)
 
 		// Start idle monitor in background
-		stopCh := make(chan struct{})
-		StartIdleMonitor(stopCh)
+		if thermalManagementEnabled {
+			idleMonitorStop = make(chan struct{})
+			StartIdleMonitor(idleMonitorStop)
+		}
 
 		runTest()
 	}
@@ -448,14 +477,16 @@ createNew:
 
 // STT is the main speech recognition function with thermal management
 func STT(req sr.SpeechRequest) (string, error) {
-	// Record this activity for idle tracking
-	RecordActivity()
+	if thermalManagementEnabled {
+		// Record this activity for idle tracking
+		RecordActivity()
 
-	// Check if we should wait (temperature too high)
-	for ShouldThrottle() {
-		logger.Println("(Thermal) Waiting due to high temperature...")
-		time.Sleep(ThermalThrottleDelay)
-		UpdateThermalState()
+		// Check if we should wait (temperature too high)
+		for ShouldThrottle() {
+			logger.Println("(Thermal) Waiting due to high temperature...")
+			time.Sleep(ThermalThrottleDelay)
+			UpdateThermalState()
+		}
 	}
 
 	// Mark as processing
