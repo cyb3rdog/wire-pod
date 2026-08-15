@@ -229,16 +229,10 @@ apply_env_overrides() {
         update_export "SERVER_PORT" "${WIREPOD_SERVER_PORT}" "${source_file}"
     fi
 
-    # Deployment-behavior toggles, now managed the same way as everything
-    # else above: on a genuinely fresh apiConfig.json (or one that
-    # predates this section, i.e. hasn't gone through the one-time
-    # migration -- see vars.migrateAdvancedSettings), these seed
-    # APIConfig.Advanced from whatever's set here; from then on the
-    # dashboard's "Advanced Settings" page is authoritative and these
-    # env vars are never consulted again. VoskThermalEnabled/
-    # VoskWithGrammar only affect the Vosk backend (tuning meant for slow
-    # hardware like the RPi Zero 2W -- pure overhead on a normal server
-    # or NAS, hence the off switch).
+    # These have no dashboard equivalent at all -- they're read directly
+    # via os.Getenv at the point of use, every time, with no config-file
+    # persistence -- so unlike everything above, they apply live on every
+    # restart, not just the first one.
     if [ -n "${WIREPOD_VOSK_THERMAL_ENABLED:-}" ]; then
         update_export "VOSK_THERMAL_ENABLED" "${WIREPOD_VOSK_THERMAL_ENABLED}" "${source_file}"
     fi

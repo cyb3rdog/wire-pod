@@ -76,14 +76,9 @@ var (
 // per-request throttle wait. It was tuned for the RPi Zero 2W and is pure
 // overhead (added latency, a background goroutine, /sys reads) on anything
 // else, e.g. Docker on a normal server or NAS. Defaults to on, preserving
-// existing behavior. Backed by APIConfig.Advanced.VoskThermalEnabled (a
-// dashboard/apiConfig setting, not an env var read live) -- a function
-// rather than a package-level var, since a var initializer runs at Go
-// package-init time, before vars.Init()/ReadConfig() has loaded
-// APIConfig from disk.
-func thermalManagementEnabled() bool {
-	return vars.APIConfig.Advanced.VoskThermalEnabled
-}
+// existing behavior; set VOSK_THERMAL_ENABLED=false to disable it
+// entirely.
+var thermalManagementEnabled = os.Getenv("VOSK_THERMAL_ENABLED") != "false"
 
 // =============================================================================
 // THERMAL MANAGEMENT FUNCTIONS
@@ -119,7 +114,7 @@ func GetCPUTemperature() float64 {
 // thermalPressure permanently at 0 -- so ShouldThrottle/GetThrottleDelay
 // stay inert too, without each needing their own guard.
 func UpdateThermalState() {
-	if !thermalManagementEnabled() {
+	if !thermalManagementEnabled {
 		return
 	}
 	temp := GetCPUTemperature()
@@ -312,7 +307,7 @@ type ARec struct {
 
 // Init initializes VOSK with thermal management
 func Init() error {
-	if vars.APIConfig.Advanced.VoskWithGrammar {
+	if os.Getenv("VOSK_WITH_GRAMMER") == "true" {
 		fmt.Println("Initializing vosk with grammer optimizations")
 		GrammerEnable = true
 	}
@@ -383,7 +378,7 @@ func Init() error {
 		recentRequests = make([]time.Time, 0, ActivityWindowSize)
 
 		// Start idle monitor in background
-		if thermalManagementEnabled() {
+		if thermalManagementEnabled {
 			idleMonitorStop = make(chan struct{})
 			StartIdleMonitor(idleMonitorStop)
 		}
@@ -482,7 +477,7 @@ createNew:
 
 // STT is the main speech recognition function with thermal management
 func STT(req sr.SpeechRequest) (string, error) {
-	if thermalManagementEnabled() {
+	if thermalManagementEnabled {
 		// Record this activity for idle tracking
 		RecordActivity()
 

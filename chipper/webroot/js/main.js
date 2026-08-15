@@ -614,7 +614,7 @@ function checkUpdate() {
 }
 
 function showLanguage() {
-  toggleVisibility(["section-weather", "section-restart", "section-kg", "section-language", "section-stt-service", "section-advanced"], "section-language", "icon-Language");
+  toggleVisibility(["section-weather", "section-restart", "section-kg", "section-language", "section-stt-service"], "section-language", "icon-Language");
   fetch("/api/get_stt_info")
     .then((response) => response.json())
     .then((parsed) => {
@@ -638,57 +638,15 @@ function showIntents() {
 }
 
 function showWeather() {
-  toggleVisibility(["section-weather", "section-restart", "section-language", "section-kg", "section-stt-service", "section-advanced"], "section-weather", "icon-Weather");
+  toggleVisibility(["section-weather", "section-restart", "section-language", "section-kg", "section-stt-service"], "section-weather", "icon-Weather");
 }
 
 function showKG() {
-  toggleVisibility(["section-weather", "section-restart", "section-language", "section-kg", "section-stt-service", "section-advanced"], "section-kg", "icon-KG");
+  toggleVisibility(["section-weather", "section-restart", "section-language", "section-kg", "section-stt-service"], "section-kg", "icon-KG");
 }
 
 function showSTTService() {
-  toggleVisibility(["section-weather", "section-restart", "section-language", "section-kg", "section-stt-service", "section-advanced"], "section-stt-service", "icon-STTService");
-}
-
-function showAdvanced() {
-  toggleVisibility(["section-weather", "section-restart", "section-language", "section-kg", "section-stt-service", "section-advanced"], "section-advanced", "icon-Advanced");
-}
-
-function updateAdvancedSettings() {
-  fetch("/api/get_advanced_settings")
-    .then((response) => response.json())
-    .then((data) => {
-      getE("voskThermalEnabled").checked = data.vosk_thermal_enabled;
-      getE("voskWithGrammar").checked = data.vosk_with_grammar;
-      getE("disableMDNS").checked = data.disable_mdns;
-      getE("port8084Enabled").checked = data.port8084_enabled;
-      getE("jdocsPingerEnabled").checked = data.jdocs_pinger_enabled;
-      getE("sdkEnabled").checked = data.sdk_enabled;
-      getE("port80Enabled").checked = data.port80_enabled;
-    });
-}
-
-function sendAdvancedSettings() {
-  const data = {
-    vosk_thermal_enabled: getE("voskThermalEnabled").checked,
-    vosk_with_grammar: getE("voskWithGrammar").checked,
-    disable_mdns: getE("disableMDNS").checked,
-    port8084_enabled: getE("port8084Enabled").checked,
-    jdocs_pinger_enabled: getE("jdocsPingerEnabled").checked,
-    sdk_enabled: getE("sdkEnabled").checked,
-    port80_enabled: getE("port80Enabled").checked,
-  };
-  fetch("/api/set_advanced_settings", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(data),
-  })
-    .then((response) => response.text())
-    .then((response) => {
-      displayMessage("advancedSettingsStatus", response);
-      alert(response);
-    });
+  toggleVisibility(["section-weather", "section-restart", "section-language", "section-kg", "section-stt-service"], "section-stt-service", "icon-STTService");
 }
 
 function toggleVisibility(sections, sectionToShow, iconId) {

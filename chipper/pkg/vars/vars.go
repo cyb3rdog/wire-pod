@@ -68,11 +68,10 @@ var WebPort string = "8080"
 // connectivity check every paired robot relies on, SDK or not) is
 // registered on the shared http.DefaultServeMux regardless, and so
 // stays reachable via :8080 even with both port 80 and the SDK server
-// off. Backed by APIConfig.Advanced.SDKEnabled -- a dashboard/apiConfig
-// setting like everything else, not an env var read live (see
-// migrateAdvancedSettings for the one-time env-var seed on upgrade).
+// off. No dashboard setting backs this; like DISABLE_MDNS/
+// VOSK_THERMAL_ENABLED it's read live, so it applies on every restart.
 func SDKEnabled() bool {
-	return APIConfig.Advanced.SDKEnabled
+	return os.Getenv("SDK_ENABLED") != "false"
 }
 
 // Port80Enabled reports whether wire-pod should bind its own :80 listener
@@ -85,20 +84,21 @@ func SDKEnabled() bool {
 // at all -- e.g. only forwarding :8080 through a reverse proxy -- and
 // don't need a paired robot's own connectivity check-in (which relies on
 // port 80 specifically; server_config.json's "check" field has no way to
-// point it at :8080 instead) to keep working. Backed by
-// APIConfig.Advanced.Port80Enabled.
+// point it at :8080 instead) to keep working. No dashboard setting backs
+// this either; applies live on every restart.
 func Port80Enabled() bool {
-	return APIConfig.Advanced.Port80Enabled
+	return os.Getenv("PORT80_ENABLED") != "false"
 }
 
 // Port8084Enabled reports whether wire-pod should also serve its legacy
 // TLS listener on :8084 (kept for 2.0.1-era robot firmware compatibility;
-// see StartChipper). Backed by APIConfig.Advanced.Port8084Enabled --
-// migrateAdvancedSettings seeds it from the old, inverted-sense NO8084
-// env var on upgrade, so existing deployments keep their current
-// behavior once, then this is dashboard-authoritative going forward.
+// see StartChipper). Deliberately left keyed on NO8084 rather than
+// migrated to the _ENABLED convention the other toggles here use: NO8084
+// predates this branch, real deployments already set it, and its
+// inverted sense (true means "disabled") only matters at this one call
+// site -- not worth a second env var and a compat shim to rename.
 func Port8084Enabled() bool {
-	return APIConfig.Advanced.Port8084Enabled
+	return os.Getenv("NO8084") != "true"
 }
 
 // /home/name/.anki_vector/

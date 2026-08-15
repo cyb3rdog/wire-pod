@@ -63,7 +63,7 @@ func PostmDNSNow() {
 }
 
 func PostmDNS() {
-	if vars.APIConfig.Advanced.DisableMDNS {
+	if os.Getenv("DISABLE_MDNS") == "true" {
 		fmt.Println("mDNS is disabled")
 		return
 	}
