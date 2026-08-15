@@ -67,6 +67,16 @@
     var errorBox = document.getElementById("auth-error");
     var isSetup = false;
 
+    // Only ever follow this to a same-origin, absolute path -- it comes
+    // from a query param an attacker could craft a link with, and this
+    // page is exactly the kind an attacker would want to bounce a victim
+    // off of after a real, successful login (e.g. on to a lookalike
+    // "session expired, re-enter your password" page).
+    var requestedRedirect = new URLSearchParams(window.location.search).get("redirect");
+    var redirectTo = (requestedRedirect && requestedRedirect.startsWith("/") && !requestedRedirect.startsWith("//"))
+      ? requestedRedirect
+      : "/";
+
     fetch("/api/auth/status", { credentials: "same-origin" })
       .then(function (res) { return res.json(); })
       .then(function (status) {
@@ -75,7 +85,7 @@
           return;
         }
         if (status.authenticated) {
-          window.location.replace("/");
+          window.location.replace(redirectTo);
           return;
         }
         if (!status.initialized) {
@@ -106,7 +116,7 @@
       })
         .then(function (res) {
           if (res.ok) {
-            window.location.replace("/");
+            window.location.replace(redirectTo);
             return;
           }
           return res.json().then(function (data) {
