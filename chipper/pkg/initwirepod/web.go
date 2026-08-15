@@ -96,7 +96,11 @@ func ChipperHTTPApi(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		vars.APIConfig.PastInitialSetup = true
-		vars.WriteConfigToDisk()
+		if err := vars.WriteConfigToDisk(); err != nil {
+			logger.Println(err)
+			fmt.Fprint(w, "error: applied but failed to save to disk (will revert on restart): "+err.Error())
+			return
+		}
 		RestartServer()
 		fmt.Fprint(w, "done")
 		return
@@ -106,7 +110,11 @@ func ChipperHTTPApi(w http.ResponseWriter, r *http.Request) {
 		vars.APIConfig.Server.HostOverride = ""
 		vars.APIConfig.PastInitialSetup = true
 		botsetup.CreateServerConfig()
-		vars.WriteConfigToDisk()
+		if err := vars.WriteConfigToDisk(); err != nil {
+			logger.Println(err)
+			fmt.Fprint(w, "error: applied but failed to save to disk (will revert on restart): "+err.Error())
+			return
+		}
 		RestartServer()
 		fmt.Fprint(w, "done")
 		return
@@ -146,7 +154,11 @@ func ChipperHTTPApi(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		vars.APIConfig.PastInitialSetup = true
-		vars.WriteConfigToDisk()
+		if err := vars.WriteConfigToDisk(); err != nil {
+			logger.Println(err)
+			fmt.Fprint(w, "error: applied but failed to save to disk (will revert on restart): "+err.Error())
+			return
+		}
 		RestartServer()
 		fmt.Fprint(w, "done")
 		return

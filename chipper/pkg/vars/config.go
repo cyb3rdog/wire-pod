@@ -79,21 +79,29 @@ type apiConfig struct {
 }
 
 // writeConfig atomically persists APIConfig, logging (rather than silently
-// dropping) marshal or write failures.
-func writeConfig() {
+// dropping) marshal or write failures, and returns the failure too --
+// callers that report success/failure back over HTTP (e.g. the dashboard
+// settings endpoints) need to know this actually landed on disk rather
+// than claiming success unconditionally. A write failure here (e.g. a
+// permissions problem on the bind-mounted data directory) previously
+// surfaced nowhere but the log, so a saved setting could silently revert
+// on every restart with no indication anything had gone wrong.
+func writeConfig() error {
 	writeBytes, err := json.Marshal(APIConfig)
 	if err != nil {
 		logger.Println("Error marshaling API config:", err)
-		return
+		return err
 	}
 	if err := fileutil.WriteFileAtomic(ApiConfigPath, writeBytes, 0644); err != nil {
 		logger.Println("Error writing API config to", ApiConfigPath, ":", err)
+		return err
 	}
+	return nil
 }
 
-func WriteConfigToDisk() {
+func WriteConfigToDisk() error {
 	logger.Println("Configuration changed, writing to disk")
-	writeConfig()
+	return writeConfig()
 }
 
 func CreateConfigFromEnv() {

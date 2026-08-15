@@ -195,7 +195,10 @@ func handleSetWeatherAPI(w http.ResponseWriter, r *http.Request) {
 		vars.APIConfig.Weather.Key = strings.TrimSpace(config.Key)
 		vars.APIConfig.Weather.Provider = config.Provider
 	}
-	vars.WriteConfigToDisk()
+	if err := vars.WriteConfigToDisk(); err != nil {
+		http.Error(w, "settings applied but failed to save to disk: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 	fmt.Fprint(w, "Changes successfully applied.")
 }
 
@@ -210,7 +213,14 @@ func handleSetKGAPI(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-	vars.WriteConfigToDisk()
+	if err := vars.WriteConfigToDisk(); err != nil {
+		// Applied in memory (so it works until the next restart) but not
+		// actually persisted -- tell the caller instead of claiming
+		// success, since this used to silently revert on every restart
+		// with no indication anything had gone wrong.
+		http.Error(w, "settings applied but failed to save to disk: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 	fmt.Fprint(w, "Changes successfully applied.")
 }
 
@@ -248,9 +258,15 @@ func handleSetSTTInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	vars.APIConfig.STT.Language = request.Language
 	vars.APIConfig.PastInitialSetup = true
-	vars.WriteConfigToDisk()
+	writeErr := vars.WriteConfigToDisk()
 	processreqs.ReloadVosk()
 	logger.Println("Reloaded voice processor successfully")
+	if writeErr != nil {
+		// Still applied in memory (ReloadVosk already picked it up), but
+		// won't survive a restart -- say so instead of a bare "success".
+		http.Error(w, "language switched for this session, but failed to save to disk (will revert on restart): "+writeErr.Error(), http.StatusInternalServerError)
+		return
+	}
 	fmt.Fprint(w, "Language switched successfully.")
 }
 
@@ -284,9 +300,13 @@ func handleSetSTTService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	vars.APIConfig.PastInitialSetup = true
-	vars.WriteConfigToDisk()
+	writeErr := vars.WriteConfigToDisk()
 	processreqs.ReloadVosk()
 	logger.Println("Reloaded voice processor successfully")
+	if writeErr != nil {
+		http.Error(w, "STT service switched for this session, but failed to save to disk (will revert on restart): "+writeErr.Error(), http.StatusInternalServerError)
+		return
+	}
 	fmt.Fprint(w, "STT service switched successfully.")
 }
 
