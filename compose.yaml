@@ -69,6 +69,16 @@ services:
       # relies on for its basic connectivity check-in, independent of
       # whether SDK-specific features are wanted.
       WIREPOD_SDK_ENABLED: ${WIREPOD_SDK_ENABLED:-true}
+      # Whether wire-pod binds its own :80 socket at all, independent of
+      # WIREPOD_SDK_ENABLED above: that one decides which handlers exist
+      # on the shared mux (bot remote control, /ok, ...), this decides
+      # whether a *separate* port 80 listener exists to reach them
+      # through -- :8080 serves that same mux either way, behind the same
+      # dashboard auth. Set to "false" if you don't want port 80 bound at
+      # all (e.g. only forwarding :8080 through a reverse proxy); a
+      # paired robot's own connectivity check-in relies on port 80
+      # specifically and will not get answered once this is off.
+      WIREPOD_PORT80_ENABLED: ${WIREPOD_PORT80_ENABLED:-true}
     ports:
       - "80:80"
       - "443:443"

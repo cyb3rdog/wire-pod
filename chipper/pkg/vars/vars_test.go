@@ -30,6 +30,28 @@ func TestSDKEnabledDefaultsOnAndRespectsFalse(t *testing.T) {
 	}
 }
 
+// TestPort80EnabledDefaultsOnAndRespectsFalse guards the same pattern for
+// the port-80 socket toggle, which is deliberately independent of
+// SDKEnabled (see sdkapp.BeginServer).
+func TestPort80EnabledDefaultsOnAndRespectsFalse(t *testing.T) {
+	t.Cleanup(func() { os.Unsetenv("PORT80_ENABLED") })
+
+	os.Unsetenv("PORT80_ENABLED")
+	if !Port80Enabled() {
+		t.Error("Port80Enabled() = false with the env var unset, want true (default on)")
+	}
+
+	os.Setenv("PORT80_ENABLED", "true")
+	if !Port80Enabled() {
+		t.Error("Port80Enabled() = false with PORT80_ENABLED=true, want true")
+	}
+
+	os.Setenv("PORT80_ENABLED", "false")
+	if Port80Enabled() {
+		t.Error("Port80Enabled() = true with PORT80_ENABLED=false, want false")
+	}
+}
+
 // TestDeleteDataNoDeadlock guards against a regression of the
 // DeleteData -> WriteJdocs reentrant-lock deadlock: DeleteData held
 // botJdocsMu.Lock() and then called WriteJdocs(), which locked the

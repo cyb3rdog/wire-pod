@@ -241,6 +241,10 @@ apply_env_overrides() {
     if [ -n "${WIREPOD_SDK_ENABLED:-}" ]; then
         update_export "SDK_ENABLED" "${WIREPOD_SDK_ENABLED}" "${source_file}"
     fi
+
+    if [ -n "${WIREPOD_PORT80_ENABLED:-}" ]; then
+        update_export "PORT80_ENABLED" "${WIREPOD_PORT80_ENABLED}" "${source_file}"
+    fi
 }
 
 persist_directories

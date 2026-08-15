@@ -57,18 +57,37 @@ var (
 
 var WebPort string = "8080"
 
-// SDKEnabled reports whether wire-pod's SDK app server (port 80: bot
-// remote-control features -- eye color, volume, Alexa opt-in, camera
-// streaming -- plus the jdocs pinger and its own connCheck-triggered mDNS
-// discovery) should start at all. It's independent of the core voice
+// SDKEnabled reports whether wire-pod's SDK app server -- bot
+// remote-control features (eye color, volume, Alexa opt-in, camera
+// streaming), the jdocs pinger, and its own connCheck-triggered mDNS
+// discovery -- should register at all. It's independent of the core voice
 // pipeline (the chipper/jdocs/token gRPC services on :443, STT, intent
 // matching, and the knowledge-graph fallback never import this package),
-// so disabling it -- e.g. to run wire-pod as a voice-only cloud server
-// behind a reverse proxy exposing just :443 -- doesn't affect any of
-// that. No dashboard setting backs this; like DISABLE_MDNS/
+// so disabling it doesn't affect any of that. It does NOT control whether
+// port 80 itself gets bound -- see Port80Enabled -- since /ok (the
+// connectivity check every paired robot relies on, SDK or not) is
+// registered on the shared http.DefaultServeMux regardless, and so
+// stays reachable via :8080 even with both port 80 and the SDK server
+// off. No dashboard setting backs this; like DISABLE_MDNS/
 // VOSK_THERMAL_MANAGEMENT it's read live, so it applies on every restart.
 func SDKEnabled() bool {
 	return os.Getenv("SDK_ENABLED") != "false"
+}
+
+// Port80Enabled reports whether wire-pod should bind its own :80 listener
+// at all, independent of SDKEnabled: SDKEnabled decides which handlers
+// register on the shared http.DefaultServeMux (bot remote control, /ok,
+// etc.), while this decides whether a *separate* socket on port 80 exists
+// to reach them through, in addition to :8080 (which serves that same
+// mux, behind the same dashboardauth gating, either way). Turning this
+// off is for deployments that would rather not have a second port bound
+// at all -- e.g. only forwarding :8080 through a reverse proxy -- and
+// don't need a paired robot's own connectivity check-in (which relies on
+// port 80 specifically; server_config.json's "check" field has no way to
+// point it at :8080 instead) to keep working. No dashboard setting backs
+// this either; applies live on every restart.
+func Port80Enabled() bool {
+	return os.Getenv("PORT80_ENABLED") != "false"
 }
 
 // /home/name/.anki_vector/

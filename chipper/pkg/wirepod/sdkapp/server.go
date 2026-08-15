@@ -640,19 +640,27 @@ func BeginServer() {
 		// Bot remote-control endpoints, the file-served SDK app, camera
 		// streaming, and the jdocs pinger (and the connCheck-triggered
 		// mDNS discovery/jdocs pinging it drives) are all off. /ok itself
-		// (below) still has to be served regardless: it's what
+		// (below) still gets registered regardless -- it's what
 		// server_config.json's "check" field points a paired robot at
-		// for its basic periodic connectivity check-in (no port in that
-		// URL means port 80, same as here) -- that's not an SDK feature,
-		// every robot relies on it independent of whether SDK-specific
-		// features are wanted.
+		// (no port in that URL means port 80 specifically, by the
+		// robot's own convention) -- but whether it's actually reachable
+		// depends on Port80Enabled too: registering it on the shared mux
+		// doesn't require a :80 socket to exist, since :8080 serves that
+		// same mux.
 		PingerEnabled = false
-		logger.Println("SDK app server disabled (SDK_ENABLED=false): only the /ok connectivity check is served on port 80; bot remote-control features and the jdocs pinger are off.")
+		logger.Println("SDK app server disabled (SDK_ENABLED=false): bot remote-control features and the jdocs pinger are off.")
 	}
 
-	// in jdocspinger.go -- always registered, see comment above.
+	// in jdocspinger.go -- always registered regardless of SDKEnabled,
+	// see comment above. Reachable via :8080 even if Port80Enabled is
+	// false, since both serve the same http.DefaultServeMux.
 	http.HandleFunc("/ok:80", connCheck)
 	http.HandleFunc("/ok", connCheck)
+
+	if !vars.Port80Enabled() {
+		logger.Println("Port 80 listener disabled (PORT80_ENABLED=false): /ok and any SDK endpoints are still reachable via :" + vars.WebPort + ", but a paired robot's own connectivity check-in (which only ever asks for port 80) will not get answered.")
+		return
+	}
 
 	logger.Println("Starting SDK app")
 	fmt.Printf("Starting server at port 80 for connCheck\n")
