@@ -360,18 +360,34 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 			if errors.Is(err, io.EOF) {
 				// prevents a crash
 				if len(fullRespSlice) == 0 {
-					logger.Println("LLM returned no response")
-					successIntent <- false
-					if isKG && robotAvailable {
-						stopKGAnim()
-						for range kgReadyToAnswer {
-							break
+					trimmed := strings.TrimSpace(fullfullRespText)
+					if trimmed == "" {
+						msg := fmt.Sprintf("LLM returned no response: endpoint=%s model=%s elapsed=%s -- stream completed successfully but produced zero content chunks (check the model name, prompt/system-message compatibility, or whether the endpoint actually supports streaming chat completions)",
+							llmEndpoint, aireq.Model, time.Since(llmStart).Round(time.Millisecond))
+						logger.Println(msg)
+						logger.LogUI(msg)
+						successIntent <- false
+						if isKG && robotAvailable {
+							stopKGAnim()
+							for range kgReadyToAnswer {
+								break
+							}
+							stop <- true
+							time.Sleep(time.Second / 3)
+							KGSim(esn, "There was an error getting data from the L. L. M.")
 						}
-						stop <- true
-						time.Sleep(time.Second / 3)
-						KGSim(esn, "There was an error getting data from the L. L. M.")
+						break
 					}
-					break
+					// The LLM did respond, but the content never crossed a
+					// sentence-ending punctuation mark (short replies with
+					// no trailing '.'/'?'/'!' are common) -- the
+					// sentence-splitting logic below never got a chance to
+					// run, and this used to be discarded entirely as "no
+					// response". Use the full response as the one and only
+					// sentence instead of losing it.
+					logger.Println("LLM debug: stream ended with no terminal punctuation, using full response as-is")
+					fullRespSlice = append(fullRespSlice, trimmed)
+					successIntent <- true
 				}
 				isDone = true
 				// if fullRespSlice != fullRespText, add that missing bit to fullRespSlice

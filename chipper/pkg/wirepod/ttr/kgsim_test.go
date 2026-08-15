@@ -16,14 +16,13 @@ import (
 )
 
 // mockStreamingLLM serves a minimal OpenAI-compatible SSE chat completion
-// stream, replying with a small fixed sentence.
-func mockStreamingLLM(t *testing.T) *httptest.Server {
+// stream, replying with the given content chunks in order.
+func mockStreamingLLM(t *testing.T, chunks []string) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		flusher := w.(http.Flusher)
-		chunks := []string{"Hello", " from", " the", " test", " LLM."}
 		for _, c := range chunks {
 			fmt.Fprintf(w, "data: {\"id\":\"1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"test-model\",\"choices\":[{\"index\":0,\"delta\":{\"content\":%q},\"finish_reason\":\"\"}]}\n\n", c)
 			flusher.Flush()
@@ -143,7 +142,7 @@ func TestLogLLMErrorFallsBackToErrorString(t *testing.T) {
 // connection anywhere in the path.
 func TestStreamingKGSimWithoutRobotStillCallsLLM(t *testing.T) {
 	logger.Init()
-	srv := mockStreamingLLM(t)
+	srv := mockStreamingLLM(t, []string{"Hello", " from", " the", " test", " LLM."})
 	defer srv.Close()
 	withTestKnowledgeConfig(t, srv.URL)
 
@@ -180,7 +179,7 @@ func TestStreamingKGSimSkipsRobotWhenSDKDisabled(t *testing.T) {
 	os.Setenv("SDK_ENABLED", "false")
 	t.Cleanup(func() { os.Unsetenv("SDK_ENABLED") })
 
-	srv := mockStreamingLLM(t)
+	srv := mockStreamingLLM(t, []string{"Hello", " from", " the", " test", " LLM."})
 	defer srv.Close()
 	withTestKnowledgeConfig(t, srv.URL)
 
@@ -197,5 +196,67 @@ func TestStreamingKGSimSkipsRobotWhenSDKDisabled(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("StreamingKGSim did not return within 5s with SDK_ENABLED=false")
+	}
+}
+
+// TestStreamingKGSimHandlesResponseWithoutTerminalPunctuation guards the
+// actual reported symptom: a real, non-empty LLM response that never
+// contains a sentence-ending '.'/'?'/'!' (short replies like "42" or
+// "yes" are common) was previously discarded entirely as "LLM returned
+// no response", because fullRespSlice only ever got appended to inside
+// the punctuation-triggered split logic. The full response must now be
+// used as-is instead of silently lost.
+func TestStreamingKGSimHandlesResponseWithoutTerminalPunctuation(t *testing.T) {
+	logger.Init()
+	srv := mockStreamingLLM(t, []string{"42"})
+	defer srv.Close()
+	withTestKnowledgeConfig(t, srv.URL)
+
+	type result struct {
+		text string
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		text, err := StreamingKGSim(nil, "unregistered-esn", "what is 6 times 7", true)
+		done <- result{text, err}
+	}()
+
+	select {
+	case r := <-done:
+		if r.err != nil {
+			t.Fatalf("StreamingKGSim returned an error for a punctuation-less response: %v", r.err)
+		}
+		if r.text != "42" {
+			t.Errorf("StreamingKGSim returned %q, want %q -- the response was silently discarded", r.text, "42")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("StreamingKGSim did not return within 5s for a punctuation-less response")
+	}
+}
+
+// TestStreamingKGSimReportsGenuinelyEmptyResponse is the flip side: a
+// stream that completes with truly zero content (no choices/deltas at
+// all) must still be reported as an error, not silently treated as
+// success with an empty string.
+func TestStreamingKGSimReportsGenuinelyEmptyResponse(t *testing.T) {
+	logger.Init()
+	srv := mockStreamingLLM(t, nil)
+	defer srv.Close()
+	withTestKnowledgeConfig(t, srv.URL)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := StreamingKGSim(nil, "unregistered-esn", "say nothing", true)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("StreamingKGSim returned no error for a genuinely empty LLM response, want an error")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("StreamingKGSim did not return within 5s for a genuinely empty response")
 	}
 }
