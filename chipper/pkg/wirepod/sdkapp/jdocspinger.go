@@ -188,7 +188,17 @@ var MDNSAlreadyRun []string
 
 var RunningMDNS bool
 
+// RunMDNS browses for robots on the network (a *separate* mDNS mechanism
+// from mdnshandler.PostmDNS's escapepod.local announce loop, serving the
+// jdocs pinger's own need to re-discover a robot's IP). DISABLE_MDNS is
+// meant as a single kill switch for all of wire-pod's mDNS traffic, so it
+// gates this too, independent of JDOCS_PINGER_ENABLED -- both the
+// automatic trigger from connCheck and the manual one from the
+// /ok?runMDNS=true query param go through here.
 func RunMDNS(botIP string) {
+	if os.Getenv("DISABLE_MDNS") == "true" {
+		return
+	}
 	for _, ip := range MDNSAlreadyRun {
 		if ip == botIP {
 			return
