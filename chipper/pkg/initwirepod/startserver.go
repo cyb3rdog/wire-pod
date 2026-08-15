@@ -161,22 +161,43 @@ func StartFromProgramInit(sttInitFunc func() error, sttHandlerFunc interface{}, 
 	wpweb.StartWebServer()
 }
 
+// closeServers shuts down whichever of the two cmux/listener pairs are
+// actually in use. serverTwo/listenerTwo are only assigned in StartChipper
+// when the current config runs the legacy :8084 listener (EPConfig plus
+// Port8084Enabled) -- IP mode and Custom Host mode never touch them, so
+// they stay at their nil zero value. serverOne/listenerOne is nil-checked
+// too for the same reason on Android (see StartChipper's early-return
+// branch for port 443). Calling .Close() on a nil interface value panics
+// unconditionally in Go, and RestartServer runs synchronously inside the
+// /api-chipper/* HTTP handler -- so without this guard, reconfiguring an
+// already-running non-EPConfig server (exactly what the setup page's
+// connection-method form now also does, not just first-run) panicked
+// every time, surfacing as "internal error" to the browser.
+func closeServers() {
+	if serverOne != nil {
+		serverOne.Close()
+	}
+	if serverTwo != nil {
+		serverTwo.Close()
+	}
+	if listenerOne != nil {
+		listenerOne.Close()
+	}
+	if listenerTwo != nil {
+		listenerTwo.Close()
+	}
+}
+
 func RestartServer() {
 	if chipperServing {
-		serverOne.Close()
-		serverTwo.Close()
-		listenerOne.Close()
-		listenerTwo.Close()
+		closeServers()
 	}
 	go StartChipper()
 }
 
 func StopServer() {
 	if chipperServing {
-		serverOne.Close()
-		serverTwo.Close()
-		listenerOne.Close()
-		listenerTwo.Close()
+		closeServers()
 	}
 }
 
@@ -271,6 +292,13 @@ func StartChipper() {
 		httpListenerTwo := serverTwo.Match(cmux.HTTP1Fast())
 		go grpcServe(grpcListenerTwo, voiceProcessor)
 		go httpServe(httpListenerTwo)
+	} else {
+		// Not running this cycle -- clear out whatever a *previous* run
+		// left behind (already closed by closeServers, but still
+		// non-nil) so state accurately reflects "not in use" rather than
+		// holding a stale, defunct reference indefinitely.
+		serverTwo = nil
+		listenerTwo = nil
 	}
 
 	fmt.Println("\033[33m\033[1mwire-pod started successfully!\033[0m")
