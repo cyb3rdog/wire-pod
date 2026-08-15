@@ -146,10 +146,23 @@ func ChipperHTTPApi(w http.ResponseWriter, r *http.Request) {
 // to disk, and restarting the server on the new settings. Previously
 // reimplemented three times, nearly verbatim, across the use_ip/use_ep/
 // use_custom cases above.
+//
+// Done as two separate UpdateAPIConfig calls, not one, deliberately:
+// botsetup.CreateCertCombo/CreateServerConfig read the Server fields
+// back via vars.GetAPIConfig (an RLock), so they can't run from inside
+// the exclusive lock UpdateAPIConfig already holds for the mutation
+// without deadlocking against it. The brief window this leaves between
+// "connection info updated" and "PastInitialSetup=true" is harmless --
+// a crash in between just means the wizard correctly asks again, rather
+// than a partial update being marked falsely complete.
 func applyServerConfig(epConfig bool, port, hostOverride string, regenerateCert bool) error {
-	vars.APIConfig.Server.EPConfig = epConfig
-	vars.APIConfig.Server.Port = port
-	vars.APIConfig.Server.HostOverride = hostOverride
+	if err := vars.UpdateAPIConfig(func(cfg *vars.Config) {
+		cfg.Server.EPConfig = epConfig
+		cfg.Server.Port = port
+		cfg.Server.HostOverride = hostOverride
+	}); err != nil {
+		return fmt.Errorf("applied but failed to save to disk (will revert on restart): %w", err)
+	}
 	if regenerateCert {
 		if err := botsetup.CreateCertCombo(); err != nil {
 			return err
@@ -160,8 +173,9 @@ func applyServerConfig(epConfig bool, port, hostOverride string, regenerateCert 
 	// wizard (STT/knowledge-graph/weather are all Server Settings-only,
 	// configured after setup, never here) -- so this is the single place
 	// setup is considered complete.
-	vars.APIConfig.PastInitialSetup = true
-	if err := vars.WriteConfigToDisk(); err != nil {
+	if err := vars.UpdateAPIConfig(func(cfg *vars.Config) {
+		cfg.PastInitialSetup = true
+	}); err != nil {
 		return fmt.Errorf("applied but failed to save to disk (will revert on restart): %w", err)
 	}
 	RestartServer()

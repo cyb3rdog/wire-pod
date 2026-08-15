@@ -48,10 +48,11 @@ func Init() error {
 		whispModel = strings.TrimSpace(whispModel)
 	}
 	var sttLanguage string
-	if len(vars.APIConfig.STT.Language) == 0 {
+	configuredLanguage := vars.GetAPIConfig().STT.Language
+	if len(configuredLanguage) == 0 {
 		sttLanguage = "en"
 	} else {
-		sttLanguage = strings.Split(vars.APIConfig.STT.Language, "-")[0]
+		sttLanguage = strings.Split(configuredLanguage, "-")[0]
 	}
 
 	modelPath := filepath.Join(vars.WhisperModelPath, "ggml-"+whispModel+".bin")

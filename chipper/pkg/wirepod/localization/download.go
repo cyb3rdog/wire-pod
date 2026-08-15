@@ -80,12 +80,13 @@ func DownloadVoskModel(language string) {
 	os.Remove(filep)
 	vars.DownloadedVoskModels = append(vars.DownloadedVoskModels, language)
 	DownloadStatus = "Reloading voice processor"
-	vars.APIConfig.STT.Language = language
 	// PastInitialSetup is set in exactly one place -- the wizard's
 	// connection-method step (initwirepod.applyServerConfig) -- not as a
 	// side effect of a model download, which can also happen long after
 	// setup from Server Settings.
-	if err := vars.WriteConfigToDisk(); err != nil {
+	if err := vars.UpdateAPIConfig(func(cfg *vars.Config) {
+		cfg.STT.Language = language
+	}); err != nil {
 		logger.Println("Failed to persist STT language change:", err)
 		// The model is downloaded and ReloadVosk below makes it active
 		// for this session either way, but the wizard's poll loop

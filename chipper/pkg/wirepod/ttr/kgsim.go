@@ -133,13 +133,19 @@ func removeEmojis(input string) string {
 func CreateAIReq(transcribedText, esn string, gpt3tryagain, isKG bool) openai.ChatCompletionRequest {
 	defaultPrompt := "You are a helpful, animated robot called Vector. Keep the response concise yet informative."
 
+	// One snapshot for the whole function: OpenAIPrompt/Provider/Model/
+	// SaveChat are read separately below, and should all reflect the same
+	// settings state, not whatever happened to be live at each individual
+	// read.
+	knowledge := vars.GetAPIConfig().Knowledge
+
 	var nChat []openai.ChatCompletionMessage
 
 	smsg := openai.ChatCompletionMessage{
 		Role: openai.ChatMessageRoleSystem,
 	}
-	if strings.TrimSpace(vars.APIConfig.Knowledge.OpenAIPrompt) != "" {
-		smsg.Content = strings.TrimSpace(vars.APIConfig.Knowledge.OpenAIPrompt)
+	if strings.TrimSpace(knowledge.OpenAIPrompt) != "" {
+		smsg.Content = strings.TrimSpace(knowledge.OpenAIPrompt)
 	} else {
 		smsg.Content = defaultPrompt
 	}
@@ -148,18 +154,18 @@ func CreateAIReq(transcribedText, esn string, gpt3tryagain, isKG bool) openai.Ch
 
 	if gpt3tryagain {
 		model = openai.GPT3Dot5Turbo
-	} else if vars.APIConfig.Knowledge.Provider == "openai" {
+	} else if knowledge.Provider == "openai" {
 		model = openai.GPT4oMini
 		logger.Println("Using " + model)
 	} else {
-		logger.Println("Using " + vars.APIConfig.Knowledge.Model)
-		model = vars.APIConfig.Knowledge.Model
+		logger.Println("Using " + knowledge.Model)
+		model = knowledge.Model
 	}
 
 	smsg.Content = CreatePrompt(smsg.Content, model, isKG)
 
 	nChat = append(nChat, smsg)
-	if vars.APIConfig.Knowledge.SaveChat {
+	if knowledge.SaveChat {
 		rchat := GetChat(esn)
 		logger.Println("Using remembered chats, length of " + fmt.Sprint(len(rchat.Chats)) + " messages")
 		nChat = append(nChat, rchat.Chats...)
@@ -206,26 +212,36 @@ func CreateAIReq(transcribedText, esn string, gpt3tryagain, isKG bool) openai.Ch
 // call after Knowledge.Enable/Provider have been set up through the
 // dashboard, which validates Provider -- see handleSetKGAPI).
 func newLLMClient() (*openai.Client, string) {
+	cfg := vars.GetAPIConfig()
 	endpoint := "https://api.openai.com/v1"
-	switch vars.APIConfig.Knowledge.Provider {
+	switch cfg.Knowledge.Provider {
 	case "together":
-		if vars.APIConfig.Knowledge.Model == "" {
-			vars.APIConfig.Knowledge.Model = "meta-llama/Llama-3-70b-chat-hf"
-			if err := vars.WriteConfigToDisk(); err != nil {
+		if cfg.Knowledge.Model == "" {
+			// Re-checked inside the lock (not just relying on the
+			// snapshot above): two concurrent first-ever "together"
+			// requests could otherwise both see Model == "" and both try
+			// to seed it -- harmless (same value either way) but worth
+			// doing properly now that this is a real update, not a bare
+			// field assignment.
+			if err := vars.UpdateAPIConfig(func(c *vars.Config) {
+				if c.Knowledge.Model == "" {
+					c.Knowledge.Model = "meta-llama/Llama-3-70b-chat-hf"
+				}
+			}); err != nil {
 				logger.Println("Failed to persist default Together model:", err)
 			}
 		}
 		endpoint = "https://api.together.xyz/v1"
-		conf := openai.DefaultConfig(vars.APIConfig.Knowledge.Key)
+		conf := openai.DefaultConfig(cfg.Knowledge.Key)
 		conf.BaseURL = endpoint
 		return openai.NewClientWithConfig(conf), endpoint
 	case "custom":
-		endpoint = vars.APIConfig.Knowledge.Endpoint
-		conf := openai.DefaultConfig(vars.APIConfig.Knowledge.Key)
+		endpoint = cfg.Knowledge.Endpoint
+		conf := openai.DefaultConfig(cfg.Knowledge.Key)
 		conf.BaseURL = endpoint
 		return openai.NewClientWithConfig(conf), endpoint
 	case "openai":
-		return openai.NewClient(vars.APIConfig.Knowledge.Key), endpoint
+		return openai.NewClient(cfg.Knowledge.Key), endpoint
 	}
 	return nil, endpoint
 }
@@ -342,7 +358,7 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 	stream, err := c.CreateChatCompletionStream(ctx, aireq)
 	if err != nil {
 		logLLMError("creating chat completion stream", llmEndpoint, aireq.Model, time.Since(llmStart), err)
-		if strings.Contains(err.Error(), "does not exist") && vars.APIConfig.Knowledge.Provider == "openai" {
+		if strings.Contains(err.Error(), "does not exist") && vars.GetAPIConfig().Knowledge.Provider == "openai" {
 			logger.Println("GPT-4 model cannot be accessed with this API key. You likely need to add more than $5 dollars of funds to your OpenAI account.")
 			logger.LogUI("GPT-4 model cannot be accessed with this API key. You likely need to add more than $5 dollars of funds to your OpenAI account.")
 			aireq := CreateAIReq(transcribedText, esn, true, isKG)
@@ -421,7 +437,7 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 					extraBit := strings.TrimPrefix(fullRespText, newStr)
 					fullRespSlice = append(fullRespSlice, extraBit)
 				}
-				if vars.APIConfig.Knowledge.SaveChat {
+				if vars.GetAPIConfig().Knowledge.SaveChat {
 					Remember(openai.ChatCompletionMessage{
 						Role:    openai.ChatMessageRoleUser,
 						Content: transcribedText,
@@ -549,7 +565,14 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 				Loops: 1,
 			},
 		)
-		if !vars.APIConfig.Knowledge.CommandsEnable {
+		// Same snapshot decides both whether to start the TTS-loop
+		// goroutine below and, ~60 lines later, whether to stop it -- a
+		// settings change landing between the two used to risk starting
+		// the goroutine under one answer and never signaling it to stop
+		// under the other (it only ever reads from stopTTSLoopCh, so a
+		// mismatched pair leaks it running forever), not just a data race.
+		commandsEnabled := vars.GetAPIConfig().Knowledge.CommandsEnable
+		if !commandsEnabled {
 			go func() {
 				for {
 					select {
@@ -603,7 +626,7 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 			}
 			numInResp = numInResp + 1
 		}
-		if !vars.APIConfig.Knowledge.CommandsEnable {
+		if !commandsEnabled {
 			close(stopTTSLoopCh)
 			for range TTSLoopStopped {
 				break

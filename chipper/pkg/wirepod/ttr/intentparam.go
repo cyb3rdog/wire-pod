@@ -315,7 +315,7 @@ func ParamChecker(req interface{}, intent string, speechText string, botSerial s
 	}
 	IntentPass(req, newIntent, speechText, intentParams, isParam)
 	if DoWeatherError {
-		if vars.APIConfig.Weather.Enable {
+		if vars.GetAPIConfig().Weather.Enable {
 			logger.Println("The weather API is not configured properly.")
 			KGSim(botSerial, "The weather API is not configured properly. Please check the wire pod logs for more details.")
 		} else {

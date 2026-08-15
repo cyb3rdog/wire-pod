@@ -188,14 +188,16 @@ func handleSetWeatherAPI(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-	if config.Provider == "" {
-		vars.APIConfig.Weather.Enable = false
-	} else {
-		vars.APIConfig.Weather.Enable = true
-		vars.APIConfig.Weather.Key = strings.TrimSpace(config.Key)
-		vars.APIConfig.Weather.Provider = config.Provider
-	}
-	if err := vars.WriteConfigToDisk(); err != nil {
+	err := vars.UpdateAPIConfig(func(cfg *vars.Config) {
+		if config.Provider == "" {
+			cfg.Weather.Enable = false
+		} else {
+			cfg.Weather.Enable = true
+			cfg.Weather.Key = strings.TrimSpace(config.Key)
+			cfg.Weather.Provider = config.Provider
+		}
+	})
+	if err != nil {
 		http.Error(w, "settings applied but failed to save to disk: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -204,16 +206,16 @@ func handleSetWeatherAPI(w http.ResponseWriter, r *http.Request) {
 
 func handleGetWeatherAPI(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(vars.APIConfig.Weather)
+	json.NewEncoder(w).Encode(vars.GetAPIConfig().Weather)
 }
 
 func handleSetKGAPI(w http.ResponseWriter, r *http.Request) {
-	// Decoded into a copy first, not directly into vars.APIConfig.Knowledge,
-	// so an invalid provider/missing key can be rejected below without
+	// Decoded into a copy first, not directly into the live config, so
+	// an invalid provider/missing key can be rejected below without
 	// having already overwritten live config with a body that turns out
 	// to be bad -- every other settings handler in this file validates
 	// before mutating; this one didn't.
-	newConfig := vars.APIConfig.Knowledge
+	newConfig := vars.GetAPIConfig().Knowledge
 	if err := json.NewDecoder(r.Body).Decode(&newConfig); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
@@ -231,8 +233,10 @@ func handleSetKGAPI(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	newConfig.Key = strings.TrimSpace(newConfig.Key)
-	vars.APIConfig.Knowledge = newConfig
-	if err := vars.WriteConfigToDisk(); err != nil {
+	err := vars.UpdateAPIConfig(func(cfg *vars.Config) {
+		cfg.Knowledge = newConfig
+	})
+	if err != nil {
 		// Applied in memory (so it works until the next restart) but not
 		// actually persisted -- tell the caller instead of claiming
 		// success, since this used to silently revert on every restart
@@ -245,7 +249,7 @@ func handleSetKGAPI(w http.ResponseWriter, r *http.Request) {
 
 func handleGetKGAPI(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(vars.APIConfig.Knowledge)
+	json.NewEncoder(w).Encode(vars.GetAPIConfig().Knowledge)
 }
 
 func handleSetSTTInfo(w http.ResponseWriter, r *http.Request) {
@@ -256,7 +260,8 @@ func handleSetSTTInfo(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-	if vars.APIConfig.STT.Service == "vosk" {
+	sttService := vars.GetAPIConfig().STT.Service
+	if sttService == "vosk" {
 		if !isValidLanguage(request.Language, localization.ValidVoskModels) {
 			http.Error(w, "language not valid", http.StatusBadRequest)
 			return
@@ -266,7 +271,7 @@ func handleSetSTTInfo(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprint(w, "downloading language model...")
 			return
 		}
-	} else if vars.APIConfig.STT.Service == "whisper.cpp" {
+	} else if sttService == "whisper.cpp" {
 		if !isValidLanguage(request.Language, localization.ValidVoskModels) {
 			http.Error(w, "language not valid", http.StatusBadRequest)
 			return
@@ -275,14 +280,15 @@ func handleSetSTTInfo(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "service must be vosk or whisper", http.StatusBadRequest)
 		return
 	}
-	vars.APIConfig.STT.Language = request.Language
 	// Not touching PastInitialSetup here: this handler is also the one
 	// the wizard itself calls (initial.js -- see applyServerConfig in
 	// initwirepod/web.go for the wizard's actual completion point), and
 	// setting it early meant a restart between that call and the
 	// connection-method step it precedes would already read as "setup
 	// complete" with no connection method chosen at all.
-	writeErr := vars.WriteConfigToDisk()
+	writeErr := vars.UpdateAPIConfig(func(cfg *vars.Config) {
+		cfg.STT.Language = request.Language
+	})
 	processreqs.ReloadVosk()
 	logger.Println("Reloaded voice processor successfully")
 	if writeErr != nil {
@@ -312,20 +318,21 @@ func handleSetSTTService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch request.Service {
-	case "vosk":
-		vars.APIConfig.STT.Service = "vosk"
-	case "whisper":
-		vars.APIConfig.STT.Service = "whisper"
-		vars.APIConfig.STT.Whisper.BaseURL = strings.TrimSpace(request.WhisperURL)
-		vars.APIConfig.STT.Whisper.APIKey = strings.TrimSpace(request.WhisperKey)
-		vars.APIConfig.STT.Whisper.Model = strings.TrimSpace(request.WhisperModel)
+	case "vosk", "whisper":
 	default:
 		http.Error(w, "service must be vosk or whisper", http.StatusBadRequest)
 		return
 	}
 	// See handleSetSTTInfo above: PastInitialSetup is set in exactly one
 	// place (the wizard's connection-method step), not here.
-	writeErr := vars.WriteConfigToDisk()
+	writeErr := vars.UpdateAPIConfig(func(cfg *vars.Config) {
+		cfg.STT.Service = request.Service
+		if request.Service == "whisper" {
+			cfg.STT.Whisper.BaseURL = strings.TrimSpace(request.WhisperURL)
+			cfg.STT.Whisper.APIKey = strings.TrimSpace(request.WhisperKey)
+			cfg.STT.Whisper.Model = strings.TrimSpace(request.WhisperModel)
+		}
+	})
 	processreqs.ReloadVosk()
 	logger.Println("Reloaded voice processor successfully")
 	if writeErr != nil {
@@ -345,12 +352,12 @@ func handleGetDownloadStatus(w http.ResponseWriter) {
 
 func handleGetSTTInfo(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(vars.APIConfig.STT)
+	json.NewEncoder(w).Encode(vars.GetAPIConfig().STT)
 }
 
 func handleGetConfig(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(vars.APIConfig)
+	json.NewEncoder(w).Encode(vars.GetAPIConfig())
 }
 
 func handleGetLogs(w http.ResponseWriter) {

@@ -463,7 +463,7 @@ func BluetoothSetupAPI(w http.ResponseWriter, r *http.Request) {
 				fmt.Fprint(w, "success")
 				return
 			} else {
-				if vars.APIConfig.Server.EPConfig {
+				if vars.GetAPIConfig().Server.EPConfig {
 					logger.Println("BLE authentication was not successful. Posting mDNS and trying again (" + fmt.Sprint(i) + "/3)...")
 					mdnshandler.PostmDNSNow()
 					time.Sleep(time.Second * 2)

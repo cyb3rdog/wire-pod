@@ -87,13 +87,13 @@ func TestCreateConfigFromEnvHostOverride(t *testing.T) {
 	t.Cleanup(func() {
 		os.Unsetenv("HOST_OVERRIDE")
 		os.Unsetenv("SERVER_PORT")
-		APIConfig = apiConfig{}
+		APIConfig = Config{}
 		ApiConfigPath = origPath
 	})
 
 	os.Setenv("HOST_OVERRIDE", "wirepod.example.com")
 	os.Setenv("SERVER_PORT", "8443")
-	APIConfig = apiConfig{}
+	APIConfig = Config{}
 	CreateConfigFromEnv()
 
 	if APIConfig.Server.HostOverride != "wirepod.example.com" {
@@ -119,13 +119,13 @@ func TestCreateConfigFromEnvHostOverrideDefaultPort(t *testing.T) {
 	ApiConfigPath = t.TempDir() + "/apiConfig.json"
 	t.Cleanup(func() {
 		os.Unsetenv("HOST_OVERRIDE")
-		APIConfig = apiConfig{}
+		APIConfig = Config{}
 		ApiConfigPath = origPath
 	})
 
 	os.Setenv("HOST_OVERRIDE", "wirepod.example.com")
 	os.Unsetenv("SERVER_PORT")
-	APIConfig = apiConfig{}
+	APIConfig = Config{}
 	CreateConfigFromEnv()
 
 	if APIConfig.Server.Port != "443" {
@@ -141,13 +141,13 @@ func TestCreateConfigFromEnvNoHostOverride(t *testing.T) {
 	origPath := ApiConfigPath
 	ApiConfigPath = t.TempDir() + "/apiConfig.json"
 	t.Cleanup(func() {
-		APIConfig = apiConfig{}
+		APIConfig = Config{}
 		ApiConfigPath = origPath
 	})
 
 	os.Unsetenv("HOST_OVERRIDE")
 	os.Unsetenv("SERVER_PORT")
-	APIConfig = apiConfig{}
+	APIConfig = Config{}
 	CreateConfigFromEnv()
 
 	if APIConfig.Server.HostOverride != "" {
@@ -233,4 +233,43 @@ func TestBotInfoConcurrentAccess(t *testing.T) {
 	if len(BotInfo.Robots) != 50 {
 		t.Fatalf("expected 50 robots after concurrent updates, got %d", len(BotInfo.Robots))
 	}
+}
+
+// TestAPIConfigConcurrentAccess exercises GetAPIConfig/UpdateAPIConfig
+// from many goroutines at once -- the same pattern as
+// TestBotInfoConcurrentAccess above, for the config struct that spent
+// this whole codebase's history as a raw package-level var read and
+// written directly from ~170 call sites across the backend (dashboard
+// HTTP handlers racing per-robot LLM/STT request goroutines) with zero
+// synchronization at all. Run with -race: it fails hard against the
+// direct-field-access version this replaced (confirmed by temporarily
+// reverting GetAPIConfig/UpdateAPIConfig to plain field access and
+// re-running with -race during development of this fix) and passes
+// clean against the mutex-guarded version.
+func TestAPIConfigConcurrentAccess(t *testing.T) {
+	ApiConfigPath = t.TempDir() + "/apiConfig.json"
+	APIConfig = Config{}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(3)
+		n := i
+		go func() {
+			defer wg.Done()
+			UpdateAPIConfig(func(cfg *Config) {
+				cfg.Knowledge.Key = fmt.Sprintf("key%d", n)
+			})
+		}()
+		go func() {
+			defer wg.Done()
+			_ = GetAPIConfig()
+		}()
+		go func() {
+			defer wg.Done()
+			SetAPIConfigInMemory(func(cfg *Config) {
+				cfg.PastInitialSetup = n%2 == 0
+			})
+		}()
+	}
+	wg.Wait()
 }

@@ -3,6 +3,7 @@ package vars
 import (
 	"encoding/json"
 	"os"
+	"sync"
 
 	"github.com/kercre123/wire-pod/chipper/pkg/fileutil"
 	"github.com/kercre123/wire-pod/chipper/pkg/logger"
@@ -12,9 +13,28 @@ import (
 
 var ApiConfigPath = "./apiConfig.json"
 
-var APIConfig apiConfig
+// apiConfigMu guards every read and write of APIConfig outside this
+// package's own startup path (ReadConfig/CreateConfigFromEnv/WriteSTT,
+// which only ever run once, before the HTTP server begins accepting
+// requests -- see the comment on those functions below). GetAPIConfig,
+// UpdateAPIConfig, and WriteConfigToDisk are the only sanctioned way for
+// every OTHER caller to touch APIConfig: it used to be read and written
+// directly from roughly 170 call sites across the backend -- dashboard
+// HTTP handlers running concurrently with per-robot LLM/STT request
+// goroutines, several of which even write to it mid-request (e.g. the
+// Together-model default seeded by ttr.newLLMClient on first use) --
+// with zero synchronization. That's a genuine, demonstrable data race
+// (confirmed with go test -race, not theoretical), not a style issue.
+var apiConfigMu sync.RWMutex
 
-type apiConfig struct {
+var APIConfig Config
+
+// Config is exported -- unlike, say, GetBotInfo's unexported return type
+// elsewhere in this package -- specifically so callers outside this
+// package can write the UpdateAPIConfig(func(cfg *vars.Config) {...})
+// closures the pattern below requires; an unexported parameter type
+// would make that literal impossible to write from another package.
+type Config struct {
 	Weather struct {
 		Enable   bool   `json:"enable"`
 		Provider string `json:"provider"`
@@ -86,6 +106,13 @@ type apiConfig struct {
 // permissions problem on the bind-mounted data directory) previously
 // surfaced nowhere but the log, so a saved setting could silently revert
 // on every restart with no indication anything had gone wrong.
+//
+// Callers must already hold apiConfigMu (WriteConfigToDisk/UpdateAPIConfig
+// below do) or otherwise guarantee exclusive access -- the startup-only
+// functions further down this file (ReadConfig/CreateConfigFromEnv/
+// WriteSTT) call this directly without the lock, which is safe only
+// because they run once, before the HTTP server begins accepting
+// requests; see the comment on ReadConfig.
 func writeConfig() error {
 	writeBytes, err := json.Marshal(APIConfig)
 	if err != nil {
@@ -99,11 +126,69 @@ func writeConfig() error {
 	return nil
 }
 
+// GetAPIConfig returns a snapshot copy of the current config, safe to
+// use freely without further synchronization: every field in Config is a
+// plain value type -- no pointers, slices, or maps at any nesting level
+// -- so the returned copy is fully independent of the live config from
+// the moment this call returns. Prefer taking one snapshot at the top of
+// a function over calling this repeatedly within it: a single snapshot
+// also gives internally-consistent reads across multiple fields, which
+// scattered direct reads of the live APIConfig never guaranteed even
+// before the concurrency fix this replaced.
+func GetAPIConfig() Config {
+	apiConfigMu.RLock()
+	defer apiConfigMu.RUnlock()
+	return APIConfig
+}
+
+// UpdateAPIConfig runs fn with exclusive access to APIConfig, then
+// persists the result -- the only safe way to both read current values
+// and write new ones as one atomic operation (e.g. "if the provider
+// changed, reset its key too"), and the only sanctioned way to mutate
+// APIConfig from outside this package.
+func UpdateAPIConfig(fn func(*Config)) error {
+	apiConfigMu.Lock()
+	defer apiConfigMu.Unlock()
+	fn(&APIConfig)
+	return writeConfig()
+}
+
+// WriteConfigToDisk persists the current config as-is, for the rare
+// caller that needs to force a write without changing anything through
+// UpdateAPIConfig (e.g. ensureCertForHostOverride, which only touches
+// cert files, not APIConfig itself, but still needs its own read of
+// APIConfig.Server.HostOverride and this write to happen as one
+// consistent operation with respect to concurrent settings changes).
 func WriteConfigToDisk() error {
+	apiConfigMu.Lock()
+	defer apiConfigMu.Unlock()
 	logger.Println("Configuration changed, writing to disk")
 	return writeConfig()
 }
 
+// SetAPIConfigInMemory mutates APIConfig under lock WITHOUT persisting --
+// for the one case in this codebase that needs to change in-memory state
+// for just this process's lifetime without touching the on-disk file:
+// StartFromProgramInit reverting PastInitialSetup to false when a stored
+// STT language turns out to be blank at startup, without overwriting a
+// possibly-still-fine on-disk value it didn't itself just validate.
+// Prefer UpdateAPIConfig for anything that should actually survive a
+// restart -- almost everything should.
+func SetAPIConfigInMemory(fn func(*Config)) {
+	apiConfigMu.Lock()
+	defer apiConfigMu.Unlock()
+	fn(&APIConfig)
+}
+
+// CreateConfigFromEnv, WriteSTT, and ReadConfig below all access
+// APIConfig directly, without apiConfigMu -- safe only because, in real
+// operation, they run exactly once each, synchronously, before the HTTP
+// server (config-ws, initwirepod) begins accepting any requests: see
+// vars.Init, which is the only production caller of ReadConfig (which in
+// turn is the only production caller of CreateConfigFromEnv/WriteSTT).
+// Every caller outside this package -- where that single-threaded
+// guarantee doesn't hold -- must use GetAPIConfig/UpdateAPIConfig
+// instead.
 func CreateConfigFromEnv() {
 	// if no config exists, create it
 	if os.Getenv("WEATHERAPI_ENABLED") == "true" {

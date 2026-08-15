@@ -62,7 +62,7 @@ func CreateCertCombo() error {
 	// IPAddresses, so a domain here would never match an IP-only SAN.
 	// With no override, fall back to the historical behavior: the
 	// machine's own outbound-facing local IP.
-	if host := strings.TrimSpace(vars.APIConfig.Server.HostOverride); host != "" {
+	if host := strings.TrimSpace(vars.GetAPIConfig().Server.HostOverride); host != "" {
 		if ip := net.ParseIP(host); ip != nil {
 			cert.IPAddresses = []net.IP{ip}
 		} else {
@@ -114,13 +114,18 @@ func CreateServerConfig() {
 	os.MkdirAll(vars.Certs, 0777)
 	var config ClientServerConfig
 	//{"jdocs": "escapepod.local:443", "tms": "escapepod.local:443", "chipper": "escapepod.local:443", "check": "escapepod.local/ok:80", "logfiles": "s3://anki-device-logs-prod/victor", "appkey": "oDoa0quieSeir6goowai7f"}
-	host := strings.TrimSpace(vars.APIConfig.Server.HostOverride)
+	// One snapshot for the whole switch below, not three separate reads
+	// of HostOverride/Port/EPConfig -- a settings change landing between
+	// them used to risk writing a server_config.json that mixed old and
+	// new values (e.g. the new HostOverride's host with the old Port).
+	server := vars.GetAPIConfig().Server
+	host := strings.TrimSpace(server.HostOverride)
 	switch {
 	case host != "":
 		// Same value CreateCertCombo just put in the cert's SAN, so the
 		// robot's TLS validation of this address actually has something
 		// to match against.
-		port := vars.APIConfig.Server.Port
+		port := server.Port
 		if port == "" {
 			port = "443"
 		}
@@ -131,7 +136,7 @@ func CreateServerConfig() {
 		config.Check = host + "/ok"
 		config.Logfiles = "s3://anki-device-logs-prod/victor"
 		config.Appkey = "oDoa0quieSeir6goowai7f"
-	case vars.APIConfig.Server.EPConfig:
+	case server.EPConfig:
 		config.Jdocs = "escapepod.local:443"
 		config.Token = "escapepod.local:443"
 		config.Chipper = "escapepod.local:443"
@@ -141,7 +146,7 @@ func CreateServerConfig() {
 	default:
 		ip := vars.GetOutboundIP()
 		ipString := ip.String()
-		url := ipString + ":" + vars.APIConfig.Server.Port
+		url := ipString + ":" + server.Port
 		config.Jdocs = url
 		config.Token = url
 		config.Chipper = url

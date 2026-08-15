@@ -44,11 +44,14 @@ func ReloadVosk() {
 // New returns a new server
 func New(InitFunc func() error, SttHandler interface{}, voiceProcessor string) (*Server, error) {
 
-	// Decide the TTS language
+	// Decide the TTS language -- in-memory only (no persist call, same as
+	// the direct field assignment this replaces): this backend doesn't
+	// have its own language setting, "en-US" is just what this process
+	// uses internally, not a saved preference.
 	if voiceProcessor != "vosk" && voiceProcessor != "whisper.cpp" {
-		vars.APIConfig.STT.Language = "en-US"
+		vars.SetAPIConfigInMemory(func(cfg *vars.Config) { cfg.STT.Language = "en-US" })
 	}
-	sttLanguage = vars.APIConfig.STT.Language
+	sttLanguage = vars.GetAPIConfig().STT.Language
 	vars.IntentList, _ = vars.LoadIntents()
 	logger.Println("Initiating " + voiceProcessor + " voice processor with language " + sttLanguage)
 	vars.SttInitFunc = InitFunc

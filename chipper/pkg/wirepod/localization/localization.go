@@ -222,29 +222,30 @@ var texts = map[string][]string{
 func GetText(key string) string {
 	var data = texts[key]
 	if data != nil {
-		if vars.APIConfig.STT.Language == "it-IT" {
+		language := vars.GetAPIConfig().STT.Language
+		if language == "it-IT" {
 			return data[1]
-		} else if vars.APIConfig.STT.Language == "es-ES" {
+		} else if language == "es-ES" {
 			return data[2]
-		} else if vars.APIConfig.STT.Language == "fr-FR" {
+		} else if language == "fr-FR" {
 			return data[3]
-		} else if vars.APIConfig.STT.Language == "de-DE" {
+		} else if language == "de-DE" {
 			return data[4]
-		} else if vars.APIConfig.STT.Language == "pl-PL" {
+		} else if language == "pl-PL" {
 			return data[5]
-		} else if vars.APIConfig.STT.Language == "zh-CN" {
+		} else if language == "zh-CN" {
 			return data[6]
-		} else if vars.APIConfig.STT.Language == "tr-TR" {
+		} else if language == "tr-TR" {
 			return data[7]
-		} else if vars.APIConfig.STT.Language == "ru-RU" {
+		} else if language == "ru-RU" {
 			return data[8]
-		} else if vars.APIConfig.STT.Language == "nt-NL" {
+		} else if language == "nt-NL" {
 			return data[9]
-		} else if vars.APIConfig.STT.Language == "uk-UA" {
+		} else if language == "uk-UA" {
 			return data[10]
-		} else if vars.APIConfig.STT.Language == "vi-VN" {
+		} else if language == "vi-VN" {
 			return data[11]
-		} else if vars.APIConfig.STT.Language == "ko-KR" {
+		} else if language == "ko-KR" {
 			return data[12]
 		}
 	}
@@ -252,7 +253,8 @@ func GetText(key string) string {
 }
 
 func ReloadVosk() {
-	if vars.APIConfig.STT.Service == "vosk" || vars.APIConfig.STT.Service == "whisper.cpp" {
+	service := vars.GetAPIConfig().STT.Service
+	if service == "vosk" || service == "whisper.cpp" {
 		vars.IntentList, _ = vars.LoadIntents()
 		vars.SttInitFunc()
 	}

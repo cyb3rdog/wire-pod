@@ -185,7 +185,7 @@ func SetupBotViaSSH(ip string, key []byte) error {
 		}
 		scpClient.Close()
 		certPath := vars.CertPath
-		if vars.APIConfig.Server.EPConfig {
+		if vars.GetAPIConfig().Server.EPConfig {
 			if runtime.GOOS == "android" || runtime.GOOS == "ios" {
 				certPath = vars.AndroidPath + "/static/epod/ep.crt"
 			} else {

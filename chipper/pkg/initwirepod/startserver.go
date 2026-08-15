@@ -156,13 +156,14 @@ func BeginWirepodSpecific(sttInitFunc func() error, sttHandlerFunc interface{}, 
 // initial.html/the dashboard -- env vars only ever seed a genuinely fresh
 // setup, same as every other setting in this codebase.
 func ensureCertForHostOverride() {
-	if vars.APIConfig.Server.HostOverride == "" {
+	hostOverride := vars.GetAPIConfig().Server.HostOverride
+	if hostOverride == "" {
 		return
 	}
 	if _, err := os.Stat(vars.CertPath); err == nil {
 		return
 	}
-	logger.Println("HOST_OVERRIDE set with no cert on disk yet -- generating one for " + vars.APIConfig.Server.HostOverride)
+	logger.Println("HOST_OVERRIDE set with no cert on disk yet -- generating one for " + hostOverride)
 	if err := botsetup.CreateCertCombo(); err != nil {
 		logger.Println("failed to generate cert for HOST_OVERRIDE:", err)
 		return
@@ -179,14 +180,18 @@ func StartFromProgramInit(sttInitFunc func() error, sttHandlerFunc interface{}, 
 		os.Setenv("STT_SERVICE", "vosk")
 	}
 	err := BeginWirepodSpecific(sttInitFunc, sttHandlerFunc, voiceProcessorName)
+	cfg := vars.GetAPIConfig()
 	if err != nil {
 		logger.Println("\033[33m\033[1mWire-pod is not setup. Use the webserver at port 8080 to set up wire-pod.\033[0m")
-	} else if !vars.APIConfig.PastInitialSetup {
+	} else if !cfg.PastInitialSetup {
 		logger.Println("\033[33m\033[1mWire-pod is not setup. Use the webserver at port 8080 to set up wire-pod.\033[0m")
-	} else if (vars.APIConfig.STT.Service == "vosk" || vars.APIConfig.STT.Service == "whisper.cpp") && vars.APIConfig.STT.Language == "" {
-		logger.Println("\033[33m\033[1mLanguage value is blank, but STT service is " + vars.APIConfig.STT.Service + ". Reinitiating setup process.\033[0m")
+	} else if (cfg.STT.Service == "vosk" || cfg.STT.Service == "whisper.cpp") && cfg.STT.Language == "" {
+		logger.Println("\033[33m\033[1mLanguage value is blank, but STT service is " + cfg.STT.Service + ". Reinitiating setup process.\033[0m")
 		logger.Println("\033[33m\033[1mWire-pod is not setup. Use the webserver at port 8080 to set up wire-pod.\033[0m")
-		vars.APIConfig.PastInitialSetup = false
+		// In-memory only, deliberately not persisted: the on-disk value
+		// wasn't validated by this check and may still be fine (e.g. once
+		// the language is fixed via the dashboard on this same boot).
+		vars.SetAPIConfigInMemory(func(c *vars.Config) { c.PastInitialSetup = false })
 	} else {
 		go StartChipper()
 	}
@@ -235,14 +240,22 @@ func StopServer() {
 }
 
 func StartChipper() {
+	// One snapshot for the whole function, not read fresh from the live
+	// config at each check below: EPConfig in particular is read twice
+	// more than a hundred lines apart (deciding whether to start the
+	// :8084 listener, then later deciding whether to block on it) -- a
+	// settings change landing between those two reads used to risk
+	// starting that listener under one answer and then never Serve()ing
+	// it (or the reverse), not just a data race.
+	cfg := vars.GetAPIConfig()
 	// load certs
-	if vars.APIConfig.Server.EPConfig && runtime.GOOS != "android" {
+	if cfg.Server.EPConfig && runtime.GOOS != "android" {
 		go mdnshandler.PostmDNS()
 	}
 	var certPub []byte
 	var certPriv []byte
 	if runtime.GOOS == "android" || runtime.GOOS == "ios" {
-		if vars.APIConfig.Server.EPConfig {
+		if cfg.Server.EPConfig {
 			certPub, _ = os.ReadFile(vars.AndroidPath + "/static/epod/ep.crt")
 			certPriv, _ = os.ReadFile(vars.AndroidPath + "/static/epod/ep.key")
 		} else {
@@ -255,7 +268,7 @@ func StartChipper() {
 			}
 		}
 	} else {
-		if vars.APIConfig.Server.EPConfig {
+		if cfg.Server.EPConfig {
 			certPub, _ = os.ReadFile("./epod/ep.crt")
 			certPriv, _ = os.ReadFile("./epod/ep.key")
 		} else {
@@ -275,11 +288,11 @@ func StartChipper() {
 		logger.Println(err)
 		os.Exit(1)
 	}
-	if runtime.GOOS == "android" && vars.APIConfig.Server.Port == "443" {
+	if runtime.GOOS == "android" && cfg.Server.Port == "443" {
 		logger.Println("not starting chipper at port 443 because android")
 	} else {
-		logger.Println("Starting chipper server at port " + vars.APIConfig.Server.Port)
-		listenerOne, err = tls.Listen("tcp", ":"+vars.APIConfig.Server.Port, &tls.Config{
+		logger.Println("Starting chipper server at port " + cfg.Server.Port)
+		listenerOne, err = tls.Listen("tcp", ":"+cfg.Server.Port, &tls.Config{
 			Certificates: []tls.Certificate{cert},
 			MinVersion:   tls.VersionTLS12,
 			CipherSuites: []uint16{
@@ -302,7 +315,7 @@ func StartChipper() {
 	go grpcServe(grpcListenerOne, voiceProcessor)
 	go httpServe(httpListenerOne)
 
-	if vars.APIConfig.Server.EPConfig && vars.Port8084Enabled() {
+	if cfg.Server.EPConfig && vars.Port8084Enabled() {
 		logger.Println("Starting chipper server at port 8084 for 2.0.1 compatibility")
 		listenerTwo, err = tls.Listen("tcp", ":8084", &tls.Config{
 			Certificates: []tls.Certificate{cert},
@@ -337,7 +350,7 @@ func StartChipper() {
 	fmt.Println("\033[33m\033[1mwire-pod started successfully!\033[0m")
 
 	chipperServing = true
-	if vars.APIConfig.Server.EPConfig && vars.Port8084Enabled() {
+	if cfg.Server.EPConfig && vars.Port8084Enabled() {
 		if runtime.GOOS != "android" {
 			go serverOne.Serve()
 		}

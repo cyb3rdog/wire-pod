@@ -55,19 +55,21 @@ func getSessionToken() string {
 	if sessionToken != "" {
 		return sessionToken
 	}
-	if vars.APIConfig.Dashboard.SessionSecret != "" {
-		sessionToken = vars.APIConfig.Dashboard.SessionSecret
+	if existing := vars.GetAPIConfig().Dashboard.SessionSecret; existing != "" {
+		sessionToken = existing
 		return sessionToken
 	}
 	sessionToken = mustRandomToken()
-	vars.APIConfig.Dashboard.SessionSecret = sessionToken
 	// Not reported anywhere HTTP-facing: this runs on the read path
 	// (validating/issuing a session cookie), not as a response to a
 	// discrete settings change a caller is waiting on. A failure here
 	// just means the in-memory token (already usable for the rest of
 	// this process's life) won't survive a restart -- logged so it's at
 	// least visible to whoever's running the server.
-	if err := vars.WriteConfigToDisk(); err != nil {
+	token := sessionToken
+	if err := vars.UpdateAPIConfig(func(cfg *vars.Config) {
+		cfg.Dashboard.SessionSecret = token
+	}); err != nil {
 		logger.Println("Failed to persist new dashboard session secret:", err)
 	}
 	return sessionToken
@@ -80,12 +82,14 @@ func rotateSessionToken() error {
 	sessionMu.Lock()
 	defer sessionMu.Unlock()
 	sessionToken = mustRandomToken()
-	vars.APIConfig.Dashboard.SessionSecret = sessionToken
-	return vars.WriteConfigToDisk()
+	token := sessionToken
+	return vars.UpdateAPIConfig(func(cfg *vars.Config) {
+		cfg.Dashboard.SessionSecret = token
+	})
 }
 
 func passwordSet() bool {
-	return vars.APIConfig.Dashboard.PasswordHash != ""
+	return vars.GetAPIConfig().Dashboard.PasswordHash != ""
 }
 
 func validSession(r *http.Request) bool {
@@ -146,7 +150,7 @@ func isProtected(path string) bool {
 	// /api-chipper/ and /api/) would otherwise be locked out by the very
 	// setup that's supposed to configure the server. Nothing is gated until
 	// that's done.
-	if !vars.APIConfig.PastInitialSetup {
+	if !vars.GetAPIConfig().PastInitialSetup {
 		return false
 	}
 	if publicAuthPaths[path] {
@@ -268,7 +272,7 @@ type statusResponse struct {
 func handleStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(statusResponse{
-		PastInitialSetup: vars.APIConfig.PastInitialSetup,
+		PastInitialSetup: vars.GetAPIConfig().PastInitialSetup,
 		Initialized:      passwordSet(),
 		Authenticated:    validSession(r),
 		SdkEnabled:       vars.SDKEnabled(),
@@ -319,18 +323,25 @@ func handleSetup(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "failed to set password")
 		return
 	}
-	vars.APIConfig.Dashboard.PasswordHash = string(hash)
+	hashStr := string(hash)
+	setHash := func(cfg *vars.Config) { cfg.Dashboard.PasswordHash = hashStr }
 	if isChange {
+		if err := vars.UpdateAPIConfig(setHash); err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "password changed but failed to save to disk (will revert on restart): "+err.Error())
+			return
+		}
 		// Invalidates every existing session cookie, including this
 		// request's own (if any) -- setSessionCookie below re-issues one
 		// with the new value so the browser making the change stays
-		// logged in. rotateSessionToken persists the config too, so
-		// there's no separate WriteConfigToDisk call on this branch.
+		// logged in. Its own separate UpdateAPIConfig call, not folded
+		// into the one above: rotateSessionToken generates the new token
+		// itself and needs sessionMu held while it does, a different lock
+		// than apiConfigMu.
 		if err := rotateSessionToken(); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "password changed but failed to save to disk (will revert on restart): "+err.Error())
 			return
 		}
-	} else if err := vars.WriteConfigToDisk(); err != nil {
+	} else if err := vars.UpdateAPIConfig(setHash); err != nil {
 		// This is the first-ever password (no prior state to protect),
 		// so unlike the change case above there's nothing to roll back --
 		// but the caller still needs to know it won't survive a restart
@@ -368,7 +379,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if bcrypt.CompareHashAndPassword([]byte(vars.APIConfig.Dashboard.PasswordHash), []byte(body.Password)) != nil {
+	if bcrypt.CompareHashAndPassword([]byte(vars.GetAPIConfig().Dashboard.PasswordHash), []byte(body.Password)) != nil {
 		writeJSONError(w, http.StatusUnauthorized, "invalid password")
 		return
 	}

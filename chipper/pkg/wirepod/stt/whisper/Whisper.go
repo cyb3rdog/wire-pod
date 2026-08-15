@@ -37,14 +37,14 @@ type openAiResp struct {
 // vars.APIConfig so a dashboard change takes effect on the next request,
 // without a restart.
 func resolvedBaseURL() string {
-	if v := vars.APIConfig.STT.Whisper.BaseURL; v != "" {
+	if v := vars.GetAPIConfig().STT.Whisper.BaseURL; v != "" {
 		return strings.TrimRight(v, "/")
 	}
 	return defaultBaseURL
 }
 
 func resolvedAPIKey() string {
-	if v := vars.APIConfig.STT.Whisper.APIKey; v != "" {
+	if v := vars.GetAPIConfig().STT.Whisper.APIKey; v != "" {
 		return v
 	}
 	// OPENAI_KEY is kept as a fallback for existing env-var-only setups.
@@ -52,7 +52,7 @@ func resolvedAPIKey() string {
 }
 
 func resolvedModel() string {
-	if v := vars.APIConfig.STT.Whisper.Model; v != "" {
+	if v := vars.GetAPIConfig().STT.Whisper.Model; v != "" {
 		return v
 	}
 	return defaultModel

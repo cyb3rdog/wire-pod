@@ -243,7 +243,7 @@ func RunMDNS(botIP string) {
 				})
 				go func() {
 					// wait for escapepod.local trasmit
-					if vars.APIConfig.Server.EPConfig {
+					if vars.GetAPIConfig().Server.EPConfig {
 						time.Sleep(time.Second)
 					}
 					pingJdocs(fmt.Sprint(entry.AddrIPv4[0]))

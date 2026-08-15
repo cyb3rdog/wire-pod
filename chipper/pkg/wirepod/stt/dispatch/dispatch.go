@@ -32,7 +32,7 @@ import (
 var Name = "vosk"
 
 func useWhisper() bool {
-	return vars.APIConfig.STT.Service == whisper.Name
+	return vars.GetAPIConfig().STT.Service == whisper.Name
 }
 
 // Init initializes only whichever backend is actually selected -- vosk's

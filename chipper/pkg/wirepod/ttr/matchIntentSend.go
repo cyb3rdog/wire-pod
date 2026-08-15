@@ -58,7 +58,7 @@ func IntentPass(req interface{}, intentThing string, speechText string, intentPa
 	}
 
 	// intercept if not intent graph but intent graph is enabled
-	if !isIntentGraph && vars.APIConfig.Knowledge.IntentGraph && intentThing == "intent_system_unmatched" {
+	if !isIntentGraph && vars.GetAPIConfig().Knowledge.IntentGraph && intentThing == "intent_system_unmatched" {
 		intentThing = "intent_greeting_hello"
 	}
 
@@ -164,7 +164,7 @@ func customIntentHandler(req interface{}, voiceText string, botSerial string) bo
 						case "!intentName":
 							arg = c.Name
 						case "!locale":
-							arg = vars.APIConfig.STT.Language
+							arg = vars.GetAPIConfig().STT.Language
 						}
 						args = append(args, arg)
 					}
