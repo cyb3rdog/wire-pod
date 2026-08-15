@@ -140,14 +140,6 @@ apply_env_overrides() {
         update_export "DEBUG_LOGGING" "${WIREPOD_DEBUG_LOGGING}" "${source_file}"
     fi
 
-    if [ -n "${WIREPOD_STT_SERVICE:-}" ]; then
-        update_export "STT_SERVICE" "${WIREPOD_STT_SERVICE}" "${source_file}"
-    fi
-
-    if [ -n "${WIREPOD_STT_LANGUAGE:-}" ]; then
-        update_export "STT_LANGUAGE" "${WIREPOD_STT_LANGUAGE}" "${source_file}"
-    fi
-
     if [ -n "${WIREPOD_USE_INBUILT_BLE:-}" ]; then
         update_export "USE_INBUILT_BLE" "${WIREPOD_USE_INBUILT_BLE}" "${source_file}"
     fi
@@ -155,6 +147,19 @@ apply_env_overrides() {
     if [ -n "${WIREPOD_PICOVOICE_APIKEY:-}" ]; then
         update_export "PICOVOICE_APIKEY" "${WIREPOD_PICOVOICE_APIKEY}" "${source_file}"
         printf '%s\n' "${WIREPOD_PICOVOICE_APIKEY}" >"${DATA_ROOT}/chipper/pico.key"
+    fi
+
+    # Everything below this point (STT service/language/Whisper endpoint,
+    # knowledge-graph "Ask", weather) has a dashboard settings page. These
+    # only ever seed the very first config (see vars.CreateConfigFromEnv)
+    # -- once apiConfig.json exists, the dashboard is authoritative and
+    # these are ignored on subsequent restarts, even if still set here.
+    if [ -n "${WIREPOD_STT_SERVICE:-}" ]; then
+        update_export "STT_SERVICE" "${WIREPOD_STT_SERVICE}" "${source_file}"
+    fi
+
+    if [ -n "${WIREPOD_STT_LANGUAGE:-}" ]; then
+        update_export "STT_LANGUAGE" "${WIREPOD_STT_LANGUAGE}" "${source_file}"
     fi
 
     if [ -n "${WIREPOD_STT_WHISPER_URL:-}" ]; then
@@ -169,10 +174,6 @@ apply_env_overrides() {
         update_export "STT_WHISPER_MODEL" "${WIREPOD_STT_WHISPER_MODEL}" "${source_file}"
     fi
 
-    # Knowledge ("Ask") and weather settings, like everything above, only
-    # ever seed the very first config (see vars.CreateConfigFromEnv) --
-    # once apiConfig.json exists, the dashboard is authoritative and these
-    # are ignored on subsequent restarts.
     if [ -n "${WIREPOD_KNOWLEDGE_ENABLED:-}" ]; then
         update_export "KNOWLEDGE_ENABLED" "${WIREPOD_KNOWLEDGE_ENABLED}" "${source_file}"
     fi
@@ -203,6 +204,30 @@ apply_env_overrides() {
 
     if [ -n "${WIREPOD_WEATHERAPI_UNIT:-}" ]; then
         update_export "WEATHERAPI_UNIT" "${WIREPOD_WEATHERAPI_UNIT}" "${source_file}"
+    fi
+
+    # These have no dashboard equivalent at all -- they're read directly
+    # via os.Getenv at the point of use, every time, with no config-file
+    # persistence -- so unlike everything above, they apply live on every
+    # restart, not just the first one.
+    if [ -n "${WIREPOD_VOSK_THERMAL_MANAGEMENT:-}" ]; then
+        update_export "VOSK_THERMAL_MANAGEMENT" "${WIREPOD_VOSK_THERMAL_MANAGEMENT}" "${source_file}"
+    fi
+
+    if [ -n "${WIREPOD_VOSK_WITH_GRAMMER:-}" ]; then
+        update_export "VOSK_WITH_GRAMMER" "${WIREPOD_VOSK_WITH_GRAMMER}" "${source_file}"
+    fi
+
+    if [ -n "${WIREPOD_DISABLE_MDNS:-}" ]; then
+        update_export "DISABLE_MDNS" "${WIREPOD_DISABLE_MDNS}" "${source_file}"
+    fi
+
+    if [ -n "${WIREPOD_NO8084:-}" ]; then
+        update_export "NO8084" "${WIREPOD_NO8084}" "${source_file}"
+    fi
+
+    if [ -n "${WIREPOD_JDOCS_PINGER_ENABLED:-}" ]; then
+        update_export "JDOCS_PINGER_ENABLED" "${WIREPOD_JDOCS_PINGER_ENABLED}" "${source_file}"
     fi
 }
 

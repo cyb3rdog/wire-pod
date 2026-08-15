@@ -47,6 +47,17 @@ services:
       WIREPOD_WEATHERAPI_PROVIDER: ${WIREPOD_WEATHERAPI_PROVIDER:-}
       WIREPOD_WEATHERAPI_KEY: ${WIREPOD_WEATHERAPI_KEY:-}
       WIREPOD_WEATHERAPI_UNIT: ${WIREPOD_WEATHERAPI_UNIT:-}
+
+      # These have no dashboard settings page at all, so unlike everything
+      # above they apply live on every restart, not just the first boot.
+      # VOSK_THERMAL_MANAGEMENT/VOSK_WITH_GRAMMER only affect the Vosk
+      # backend (tuning meant for slow hardware like the RPi Zero 2W --
+      # pure overhead on a normal server or NAS, hence the off switch).
+      WIREPOD_VOSK_THERMAL_MANAGEMENT: ${WIREPOD_VOSK_THERMAL_MANAGEMENT:-true}
+      WIREPOD_VOSK_WITH_GRAMMER: ${WIREPOD_VOSK_WITH_GRAMMER:-false}
+      WIREPOD_DISABLE_MDNS: ${WIREPOD_DISABLE_MDNS:-false}
+      WIREPOD_NO8084: ${WIREPOD_NO8084:-false}
+      WIREPOD_JDOCS_PINGER_ENABLED: ${WIREPOD_JDOCS_PINGER_ENABLED:-true}
     ports:
       - "80:80"
       - "443:443"
