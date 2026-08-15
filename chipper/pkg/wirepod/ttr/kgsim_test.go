@@ -2,13 +2,54 @@ package wirepod_ttr
 
 import (
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/kercre123/wire-pod/chipper/pkg/logger"
+	"github.com/kercre123/wire-pod/chipper/pkg/vars"
 	"github.com/sashabaranov/go-openai"
 )
+
+// mockStreamingLLM serves a minimal OpenAI-compatible SSE chat completion
+// stream, replying with a small fixed sentence.
+func mockStreamingLLM(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		flusher := w.(http.Flusher)
+		chunks := []string{"Hello", " from", " the", " test", " LLM."}
+		for _, c := range chunks {
+			fmt.Fprintf(w, "data: {\"id\":\"1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"test-model\",\"choices\":[{\"index\":0,\"delta\":{\"content\":%q},\"finish_reason\":\"\"}]}\n\n", c)
+			flusher.Flush()
+		}
+		fmt.Fprint(w, "data: [DONE]\n\n")
+		flusher.Flush()
+	}))
+}
+
+func withTestKnowledgeConfig(t *testing.T, endpoint string) {
+	t.Helper()
+	origKnowledge := vars.APIConfig.Knowledge
+	origBotInfoPath := vars.BotInfoPath
+	origBotInfo := vars.BotInfo
+	t.Cleanup(func() {
+		vars.APIConfig.Knowledge = origKnowledge
+		vars.BotInfoPath = origBotInfoPath
+		vars.BotInfo = origBotInfo
+	})
+	vars.APIConfig.Knowledge.Provider = "custom"
+	vars.APIConfig.Knowledge.Endpoint = endpoint
+	vars.APIConfig.Knowledge.Key = "test-key"
+	vars.APIConfig.Knowledge.Model = "test-model"
+	vars.BotInfoPath = t.TempDir() + "/botSdkInfo.json"
+	vars.BotInfo = vars.RobotInfoStore{} // no robots registered -- forces robotAvailable=false
+}
 
 // TestLogLLMErrorExtractsRequestErrorBody guards the actual reported
 // symptom: a custom/self-hosted LLM endpoint behind a reverse proxy
@@ -89,5 +130,72 @@ func TestLogLLMErrorFallsBackToErrorString(t *testing.T) {
 	tray := logger.GetLogTrayList()
 	if !strings.Contains(tray, "connection refused") {
 		t.Error("log tray missing the underlying error text for a non-HTTP failure")
+	}
+}
+
+// TestStreamingKGSimWithoutRobotStillCallsLLM guards the graceful-
+// degradation fix: no robot registered for the esn (the same end state as
+// a robot whose recorded IP is wrong because it's behind a reverse proxy,
+// or SDK_ENABLED=false) must NOT prevent the LLM call from completing --
+// the previous behavior aborted (or, for BControl/animation-loop-fed
+// channels, could hang) before the LLM was ever contacted. The function
+// must return the full accumulated response with no error and no robot
+// connection anywhere in the path.
+func TestStreamingKGSimWithoutRobotStillCallsLLM(t *testing.T) {
+	logger.Init()
+	srv := mockStreamingLLM(t)
+	defer srv.Close()
+	withTestKnowledgeConfig(t, srv.URL)
+
+	type result struct {
+		text string
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		text, err := StreamingKGSim(nil, "unregistered-esn", "what time is it", true)
+		done <- result{text, err}
+	}()
+
+	select {
+	case r := <-done:
+		if r.err != nil {
+			t.Fatalf("StreamingKGSim returned an error with no robot registered: %v", r.err)
+		}
+		want := "Hello from the test LLM."
+		if r.text != want {
+			t.Errorf("StreamingKGSim returned %q, want %q", r.text, want)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("StreamingKGSim did not return within 5s -- likely blocked on a robot-control channel with no robot connected")
+	}
+}
+
+// TestStreamingKGSimSkipsRobotWhenSDKDisabled guards the other half of
+// "consider the relevant env vars": SDK_ENABLED=false must skip the
+// robot-connection attempt entirely (not just tolerate its failure) and
+// still let the LLM call proceed.
+func TestStreamingKGSimSkipsRobotWhenSDKDisabled(t *testing.T) {
+	logger.Init()
+	os.Setenv("SDK_ENABLED", "false")
+	t.Cleanup(func() { os.Unsetenv("SDK_ENABLED") })
+
+	srv := mockStreamingLLM(t)
+	defer srv.Close()
+	withTestKnowledgeConfig(t, srv.URL)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := StreamingKGSim(nil, "some-esn", "what time is it", true)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("StreamingKGSim returned an error with SDK_ENABLED=false: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("StreamingKGSim did not return within 5s with SDK_ENABLED=false")
 	}
 }

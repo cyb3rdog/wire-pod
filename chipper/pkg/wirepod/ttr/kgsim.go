@@ -238,18 +238,37 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 			break
 		}
 	}
-	if matched {
+	// robotAvailable gates every bit of this function that plays
+	// animations or speaks the response through a direct connection back
+	// to the robot's own local gRPC gateway (bot.IPAddress:443) -- a
+	// separate connection from the one the robot itself opened to reach
+	// wire-pod. That recorded IP is only trustworthy when wire-pod can
+	// see the robot's real peer address; behind a reverse proxy (e.g.
+	// Caddy TCP passthrough for a custom domain) it's the proxy's
+	// address instead, and this dial ends up hitting wire-pod's own
+	// front door by accident, which 502s it -- surfacing as a confusing
+	// gRPC transport error with no connection to the LLM at all. Treat
+	// every failure here as non-fatal: skip animation/speech feedback,
+	// but still make the LLM call below, so a working LLM integration
+	// stays verifiable independent of whether this side channel to the
+	// robot works.
+	robotAvailable := false
+	if !vars.SDKEnabled() {
+		logger.Println("(KG) SDK_ENABLED=false -- skipping robot control/animation feedback, LLM will still be called")
+	} else if !matched {
+		logger.Println("(KG) robot control unavailable (esn " + esn + " not registered) -- skipping animation feedback, LLM will still be called")
+	} else {
 		var err error
 		robot, err = vector.New(vector.WithSerialNo(esn), vector.WithToken(guid), vector.WithTarget(target))
 		if err != nil {
-			return err.Error(), err
+			logger.Println("(KG) robot control unavailable (" + err.Error() + ") -- skipping animation feedback, LLM will still be called")
+		} else if _, err := robot.Conn.BatteryState(context.Background(), &vectorpb.BatteryStateRequest{}); err != nil {
+			logger.Println("(KG) robot control unavailable (" + err.Error() + ") -- skipping animation feedback, LLM will still be called")
+		} else {
+			robotAvailable = true
 		}
 	}
-	_, err := robot.Conn.BatteryState(context.Background(), &vectorpb.BatteryStateRequest{})
-	if err != nil {
-		return "", err
-	}
-	if isKG {
+	if isKG && robotAvailable {
 		BControl(robot, ctx, start, stop)
 		go func() {
 			for {
@@ -318,7 +337,7 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 				return "", err
 			}
 		} else {
-			if isKG {
+			if isKG && robotAvailable {
 				stopKGAnim()
 				for range kgReadyToAnswer {
 					break
@@ -343,7 +362,7 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 				if len(fullRespSlice) == 0 {
 					logger.Println("LLM returned no response")
 					successIntent <- false
-					if isKG {
+					if isKG && robotAvailable {
 						stopKGAnim()
 						for range kgReadyToAnswer {
 							break
@@ -442,6 +461,17 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 		} else {
 			return "", errors.New("llm returned no response")
 		}
+	}
+	if !robotAvailable {
+		// No connection to speak the response through -- but the LLM
+		// call itself already succeeded (successIntent came back true)
+		// and is still streaming. Wait for it to finish so the full
+		// response is captured, and return it directly instead of
+		// running the robot-driven playback loop below, none of which
+		// is reachable without robot.Conn.
+		<-streamDone
+		logger.Println("(KG) robot control unavailable -- LLM responded in " + time.Since(llmStart).Round(time.Millisecond).String() + ": " + fullfullRespText)
+		return fullfullRespText, nil
 	}
 	time.Sleep(time.Millisecond * 200)
 	if !isKG {
