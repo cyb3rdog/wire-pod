@@ -2,8 +2,9 @@ package processreqs
 
 import (
 	"encoding/json"
-	"strings"
 	"regexp"
+	"strings"
+	"time"
 
 	pb "github.com/digital-dream-labs/api/go/chipperpb"
 	"github.com/kercre123/wire-pod/chipper/pkg/logger"
@@ -92,10 +93,14 @@ func houndifyKG(req sr.SpeechRequest) string {
 
 func streamingKG(req *vtt.KnowledgeGraphRequest, speechReq sr.SpeechRequest) string {
 	// have him start "thinking" right after the text is transcribed
+	sttStart := time.Now()
 	transcribedText, err := sttHandler(speechReq)
+	sttElapsed := time.Since(sttStart).Round(time.Millisecond)
 	if err != nil {
+		logger.Println("(KG) transcription failed after " + sttElapsed.String() + ": " + err.Error())
 		return "There was an error."
 	}
+	logger.Println("(KG) transcribed in " + sttElapsed.String() + ": " + transcribedText)
 	kg := pb.KnowledgeGraphResponse{
 		Session:     req.Session,
 		DeviceId:    req.Device,
@@ -105,6 +110,9 @@ func streamingKG(req *vtt.KnowledgeGraphRequest, speechReq sr.SpeechRequest) str
 	req.Stream.Send(&kg)
 	_, err = ttr.StreamingKGSim(req, req.Device, transcribedText, true)
 	if err != nil {
+		// ttr.StreamingKGSim already logs a detailed diagnostic (endpoint,
+		// model, elapsed time, and the actual HTTP status/body for a
+		// non-2xx response) via logLLMError before returning here.
 		logger.Println("LLM error: " + err.Error())
 	}
 	logger.Println("(KG) Bot " + speechReq.Device + " request served.")
@@ -154,21 +162,21 @@ func houndifyTextRequest(queryText string, device string, session string) string
 	if !vars.APIConfig.Knowledge.Enable || vars.APIConfig.Knowledge.Provider != "houndify" {
 		return "Houndify is not enabled."
 	}
-	
+
 	logger.Println("Sending text request to Houndify...")
-	
+
 	req := houndify.TextRequest{
 		Query:     queryText,
 		UserID:    device,
 		RequestID: session,
 	}
-	
+
 	serverResponse, err := HKGclient.TextSearch(req)
 	if err != nil {
 		logger.Println("Error sending text request to Houndify:", err)
 		return ""
 	}
-	
+
 	apiResponse, err := ParseSpokenResponse(serverResponse)
 	if err != nil {
 		logger.Println("Error parsing Houndify response:", err)
@@ -177,7 +185,7 @@ func houndifyTextRequest(queryText string, device string, session string) string
 	}
 
 	apiResponse = cleanHoundifyResponse(apiResponse)
-	
+
 	logger.Println("Houndify response:", apiResponse)
 	return apiResponse
 }

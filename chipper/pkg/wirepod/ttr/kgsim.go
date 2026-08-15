@@ -182,6 +182,41 @@ func CreateAIReq(transcribedText, esn string, gpt3tryagain, isKG bool) openai.Ch
 	return aireq
 }
 
+// logLLMError writes one detailed diagnostic line for a failed LLM call:
+// which endpoint/model was actually hit, how long it took to fail, and --
+// for a non-2xx HTTP response, the common case for a misconfigured or
+// unreachable self-hosted/custom endpoint -- the real status code and
+// response body go-openai captured, rather than just its default
+// summarized error string (which for a RequestError already includes the
+// body, but buried in one unlabeled line that's easy to miss, and for
+// other error shapes doesn't surface it at all). Logged through both
+// LogTray (docker logs / /api/get_debug_logs) and LogUI (dashboard
+// "recent activity"), unlike the previous stdlib log.Printf call this
+// replaces, which reached neither.
+func logLLMError(what, endpoint, model string, elapsed time.Duration, err error) {
+	var detail string
+	var reqErr *openai.RequestError
+	var apiErr *openai.APIError
+	switch {
+	case errors.As(err, &reqErr):
+		body := strings.TrimSpace(string(reqErr.Body))
+		if body == "" {
+			body = "(empty)"
+		} else if len(body) > 500 {
+			body = body[:500] + "... (truncated)"
+		}
+		detail = fmt.Sprintf("HTTP %d (%s), response body: %s", reqErr.HTTPStatusCode, reqErr.HTTPStatus, body)
+	case errors.As(err, &apiErr):
+		detail = fmt.Sprintf("HTTP %d (%s): %s", apiErr.HTTPStatusCode, apiErr.HTTPStatus, apiErr.Message)
+	default:
+		detail = err.Error()
+	}
+	msg := fmt.Sprintf("LLM error (%s): endpoint=%s model=%s elapsed=%s -- %s",
+		what, endpoint, model, elapsed.Round(time.Millisecond), detail)
+	logger.Println(msg)
+	logger.LogUI(msg)
+}
+
 func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bool) (string, error) {
 	start := make(chan bool)
 	stop := make(chan bool)
@@ -239,18 +274,21 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 	var fullRespSlice []string
 	var isDone bool
 	var c *openai.Client
+	llmEndpoint := "https://api.openai.com/v1"
 	switch vars.APIConfig.Knowledge.Provider {
 	case "together":
 		if vars.APIConfig.Knowledge.Model == "" {
 			vars.APIConfig.Knowledge.Model = "meta-llama/Llama-3-70b-chat-hf"
 			vars.WriteConfigToDisk()
 		}
+		llmEndpoint = "https://api.together.xyz/v1"
 		conf := openai.DefaultConfig(vars.APIConfig.Knowledge.Key)
-		conf.BaseURL = "https://api.together.xyz/v1"
+		conf.BaseURL = llmEndpoint
 		c = openai.NewClientWithConfig(conf)
 	case "custom":
+		llmEndpoint = vars.APIConfig.Knowledge.Endpoint
 		conf := openai.DefaultConfig(vars.APIConfig.Knowledge.Key)
-		conf.BaseURL = vars.APIConfig.Knowledge.Endpoint
+		conf.BaseURL = llmEndpoint
 		c = openai.NewClientWithConfig(conf)
 	case "openai":
 		c = openai.NewClient(vars.APIConfig.Knowledge.Key)
@@ -263,18 +301,20 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 
 	aireq := CreateAIReq(transcribedText, esn, false, isKG)
 
+	llmStart := time.Now()
 	stream, err := c.CreateChatCompletionStream(ctx, aireq)
 	if err != nil {
-		log.Printf("Error creating chat completion stream: %v", err)
+		logLLMError("creating chat completion stream", llmEndpoint, aireq.Model, time.Since(llmStart), err)
 		if strings.Contains(err.Error(), "does not exist") && vars.APIConfig.Knowledge.Provider == "openai" {
 			logger.Println("GPT-4 model cannot be accessed with this API key. You likely need to add more than $5 dollars of funds to your OpenAI account.")
 			logger.LogUI("GPT-4 model cannot be accessed with this API key. You likely need to add more than $5 dollars of funds to your OpenAI account.")
 			aireq := CreateAIReq(transcribedText, esn, true, isKG)
 			logger.Println("Falling back to " + aireq.Model)
 			logger.LogUI("Falling back to " + aireq.Model)
+			llmStart = time.Now()
 			stream, err = c.CreateChatCompletionStream(ctx, aireq)
 			if err != nil {
-				logger.Println("OpenAI still not returning a response even after falling back. Erroring.")
+				logLLMError("creating chat completion stream (fallback model)", llmEndpoint, aireq.Model, time.Since(llmStart), err)
 				return "", err
 			}
 		} else {
@@ -340,13 +380,13 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 						esn)
 				}
 				logger.LogUI("LLM response for " + esn + ": " + newStr)
-				logger.Println("LLM stream finished")
+				logger.Println("LLM stream finished in " + time.Since(llmStart).Round(time.Millisecond).String())
 				closeStreamDone()
 				return
 			}
 
 			if err != nil {
-				logger.Println("Stream error: " + err.Error())
+				logLLMError("reading chat completion stream", llmEndpoint, aireq.Model, time.Since(llmStart), err)
 				isDone = true // no more content will arrive
 				select {
 				case successIntent <- false:
