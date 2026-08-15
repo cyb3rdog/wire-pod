@@ -24,6 +24,14 @@ if [ "$(id -u)" = "0" ]; then
             chown -R "${RUN_AS_USER}:${RUN_AS_USER}" "${dir}"
         fi
     done
+    # setpriv only changes uid/gid/groups -- it does not touch the
+    # environment, so without this HOME stays "/root" (root's own HOME,
+    # inherited unchanged) even though the process is about to run as
+    # the unprivileged wirepod user, which can't write there. Resolve
+    # wirepod's real home dir rather than hardcoding it, in case the
+    # dockerfile's useradd invocation ever changes.
+    target_home="$(getent passwd "${RUN_AS_USER}" | cut -d: -f6)"
+    export HOME="${target_home}" USER="${RUN_AS_USER}" LOGNAME="${RUN_AS_USER}"
     exec setpriv --reuid="${RUN_AS_USER}" --regid="${RUN_AS_USER}" --clear-groups "$0" "$@"
 fi
 
