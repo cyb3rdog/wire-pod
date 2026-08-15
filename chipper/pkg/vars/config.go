@@ -56,6 +56,16 @@ type apiConfig struct {
 		// false for ip, true for escape pod
 		EPConfig bool   `json:"epconfig"`
 		Port     string `json:"port"`
+		// HostOverride, when set, replaces both "escapepod.local" (EPConfig
+		// mode) and the auto-detected local IP (plain IP mode) as the
+		// address written into server_config.json AND as the SAN on the
+		// generated TLS cert -- see botsetup.CreateServerConfig/
+		// CreateCertCombo. For robots reached through a domain that isn't
+		// resolvable/routable as "escapepod.local" (reverse proxies,
+		// port-forwarded external domains), the endpoint the robot dials
+		// and the cert's identity need to be the same value, which neither
+		// existing mode can express on its own.
+		HostOverride string `json:"host_override,omitempty"`
 	} `json:"server"`
 	HasReadFromEnv   bool `json:"hasreadfromenv"`
 	PastInitialSetup bool `json:"pastinitialsetup"`

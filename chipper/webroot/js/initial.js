@@ -63,24 +63,39 @@ function sendSetupInfo() {
 
 function checkConn() {
   const connValue = document.getElementById("connSelection").value;
-  document.getElementById("portViz").style.display = connValue === "ip" ? "block" : "none";
+  document.getElementById("portViz").style.display = connValue === "ip" || connValue === "custom" ? "block" : "none";
+  document.getElementById("hostViz").style.display = connValue === "custom" ? "block" : "none";
 }
 
 function setConn() {
-  updateSetupStatus("Setting connection type (ep or ip)...");
+  updateSetupStatus("Setting connection type (ep, ip, or custom host)...");
   const connValue = document.getElementById("connSelection").value;
   let port = document.getElementById("portInput").value;
   port = port ? port : "443";
-  const url = connValue === "ep" ? "/api-chipper/use_ep" : `/api-chipper/use_ip?port=${port}`;
+
+  let url;
+  if (connValue === "ep") {
+    url = "/api-chipper/use_ep";
+  } else if (connValue === "custom") {
+    const host = document.getElementById("hostInput").value.trim();
+    if (!host) {
+      updateSetupStatus("Error: a custom host requires a domain or IP address.");
+      document.getElementById("config-options").style.display = "block";
+      return;
+    }
+    url = `/api-chipper/use_custom?host=${encodeURIComponent(host)}&port=${encodeURIComponent(port)}`;
+  } else {
+    url = `/api-chipper/use_ip?port=${port}`;
+  }
 
   fetch(url)
     .then((response) => response.text())
     .then((response) => {
-      if (response) {
+      if (response && response === "done") {
         updateSetupStatus("Setup is complete! Wire-pod has started. Redirecting to main page...");
         setTimeout(() => window.location.href = "/", 3000);
       } else {
-        updateSetupStatus("Error setting up wire-pod, check the logs");
+        updateSetupStatus(response || "Error setting up wire-pod, check the logs");
         document.getElementById("config-options").style.display = "block";
       }
     });

@@ -40,10 +40,17 @@
             <option value="ip">
               IP Address (recommended for OSKR/dev-unlocked robots)
             </option>
+            <option value="custom">
+              Custom Host (domain or IP; for reverse proxies / external access)
+            </option>
           </select>
           <div class="center" id="portViz" style="display: none">
             <label for="portInput">Input custom port here (default is 443)</label>
             <input type="text" id="portInput" name="portInput" placeholder="443" />
+          </div>
+          <div class="center" id="hostViz" style="display: none">
+            <label for="hostInput">Domain or IP the robot will actually connect to (this is baked into the generated certificate, so it must match exactly)</label>
+            <input type="text" id="hostInput" name="hostInput" placeholder="wirepod.example.com" />
           </div>
           <hr />
         </div>

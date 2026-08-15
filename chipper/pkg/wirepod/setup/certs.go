@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/kercre123/wire-pod/chipper/pkg/logger"
@@ -28,9 +29,6 @@ type ClientServerConfig struct {
 
 // creates and exports a priv/pub key combo generated with IP address
 func CreateCertCombo() error {
-	// get preferred IP address of machine
-	ipAddr := vars.GetOutboundIP()
-
 	// ca certificate
 	ca := &x509.Certificate{
 		SerialNumber:          big.NewInt(2019),
@@ -51,12 +49,27 @@ func CreateCertCombo() error {
 	cert := &x509.Certificate{
 		SerialNumber: big.NewInt(1658),
 		Subject:      pkix.Name{},
-		IPAddresses:  []net.IP{ipAddr},
 		NotBefore:    time.Now(),
 		NotAfter:     time.Now().AddDate(10, 0, 0),
 		SubjectKeyId: []byte{1, 2, 3, 4, 6},
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
 		KeyUsage:     x509.KeyUsageDigitalSignature,
+	}
+	// HostOverride wins when set: if it parses as a literal IP, it goes
+	// in IPAddresses (same as the default path below); otherwise it's a
+	// hostname/domain, which needs a DNSNames SAN instead -- TLS clients
+	// validate hostname-based connections against DNSNames, not
+	// IPAddresses, so a domain here would never match an IP-only SAN.
+	// With no override, fall back to the historical behavior: the
+	// machine's own outbound-facing local IP.
+	if host := strings.TrimSpace(vars.APIConfig.Server.HostOverride); host != "" {
+		if ip := net.ParseIP(host); ip != nil {
+			cert.IPAddresses = []net.IP{ip}
+		} else {
+			cert.DNSNames = []string{host}
+		}
+	} else {
+		cert.IPAddresses = []net.IP{vars.GetOutboundIP()}
 	}
 	certPrivKey, err := rsa.GenerateKey(rand.Reader, 1028)
 	if err != nil {
@@ -101,14 +114,31 @@ func CreateServerConfig() {
 	os.MkdirAll(vars.Certs, 0777)
 	var config ClientServerConfig
 	//{"jdocs": "escapepod.local:443", "tms": "escapepod.local:443", "chipper": "escapepod.local:443", "check": "escapepod.local/ok:80", "logfiles": "s3://anki-device-logs-prod/victor", "appkey": "oDoa0quieSeir6goowai7f"}
-	if vars.APIConfig.Server.EPConfig {
+	host := strings.TrimSpace(vars.APIConfig.Server.HostOverride)
+	switch {
+	case host != "":
+		// Same value CreateCertCombo just put in the cert's SAN, so the
+		// robot's TLS validation of this address actually has something
+		// to match against.
+		port := vars.APIConfig.Server.Port
+		if port == "" {
+			port = "443"
+		}
+		url := host + ":" + port
+		config.Jdocs = url
+		config.Token = url
+		config.Chipper = url
+		config.Check = host + "/ok"
+		config.Logfiles = "s3://anki-device-logs-prod/victor"
+		config.Appkey = "oDoa0quieSeir6goowai7f"
+	case vars.APIConfig.Server.EPConfig:
 		config.Jdocs = "escapepod.local:443"
 		config.Token = "escapepod.local:443"
 		config.Chipper = "escapepod.local:443"
 		config.Check = "escapepod.local/ok"
 		config.Logfiles = "s3://anki-device-logs-prod/victor"
 		config.Appkey = "oDoa0quieSeir6goowai7f"
-	} else {
+	default:
 		ip := vars.GetOutboundIP()
 		ipString := ip.String()
 		url := ipString + ":" + vars.APIConfig.Server.Port
