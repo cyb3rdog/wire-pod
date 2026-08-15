@@ -1,8 +1,6 @@
 package processreqs
 
 import (
-	"fmt"
-
 	"github.com/kercre123/wire-pod/chipper/pkg/logger"
 	"github.com/kercre123/wire-pod/chipper/pkg/vars"
 	sr "github.com/kercre123/wire-pod/chipper/pkg/wirepod/speechrequest"
@@ -25,11 +23,6 @@ var sttLanguage string = "en-US"
 // speech-to-text
 var sttHandler func(sr.SpeechRequest) (string, error)
 
-// speech-to-intent (rhino)
-var stiHandler func(sr.SpeechRequest) (string, map[string]string, error)
-
-var isSti bool = false
-
 // ReloadVosk re-runs the compiled binary's STT init function after a
 // settings change (language, or -- via cmd/vosk's dispatcher -- the
 // active service itself). Previously gated to "vosk"/"whisper.cpp" only;
@@ -42,7 +35,7 @@ func ReloadVosk() {
 }
 
 // New returns a new server
-func New(InitFunc func() error, SttHandler interface{}, voiceProcessor string) (*Server, error) {
+func New(InitFunc func() error, SttHandler func(sr.SpeechRequest) (string, error), voiceProcessor string) (*Server, error) {
 
 	// Decide the TTS language -- in-memory only (no persist call, same as
 	// the direct field assignment this replaces): this backend doesn't
@@ -60,18 +53,7 @@ func New(InitFunc func() error, SttHandler interface{}, voiceProcessor string) (
 		return nil, err
 	}
 
-	// SttHandler can either be `func(sr.SpeechRequest) (string, error)` or `func (sr.SpeechRequest) (string, map[string]string, error)`
-	// second one exists to accomodate Rhino
-
-	// check function type
-	if str, is := SttHandler.(func(sr.SpeechRequest) (string, error)); is {
-		sttHandler = str
-	} else if str, is := SttHandler.(func(sr.SpeechRequest) (string, map[string]string, error)); is {
-		stiHandler = str
-		isSti = true
-	} else {
-		return nil, fmt.Errorf("stthandler not of correct type")
-	}
+	sttHandler = SttHandler
 
 	// Initiating the chosen voice processor and load intents from json
 	VoiceProcessor = voiceProcessor

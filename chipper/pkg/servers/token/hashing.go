@@ -5,10 +5,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
-
-	"github.com/kercre123/wire-pod/chipper/pkg/logger"
 )
 
 // mostly copied from vector-cloud
@@ -68,21 +65,6 @@ func CreateTokenAndHashedToken() (GUID string, GUIDHash string, isError error) {
 	hashedToken := base64.StdEncoding.EncodeToString(hashed)
 
 	return token, hashedToken, nil
-}
-
-func DecodeAndCompare(tokenHashes string, token string) {
-	// debug
-	var ctm ClientTokenManager
-	json.Unmarshal([]byte(tokenHashes), &ctm)
-	for _, tokenHash := range ctm.ClientTokens {
-		err := CompareHashAndToken(tokenHash.Hash, token)
-		if err == nil {
-			logger.Println(tokenHash.Hash + " matched " + token)
-		} else {
-			logger.Println(err)
-		}
-	}
-
 }
 
 // copied from vector-cloud

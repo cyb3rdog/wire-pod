@@ -28,9 +28,7 @@ type Server struct {
 
 // New accepts a list of args and returns the service
 func New(opts ...Option) (*Server, error) {
-	cfg := options{
-		//log: log.Base(),
-	}
+	cfg := options{}
 
 	for _, opt := range opts {
 		opt(&cfg)

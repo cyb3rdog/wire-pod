@@ -24,6 +24,7 @@ import (
 	wp "github.com/kercre123/wire-pod/chipper/pkg/wirepod/preqs"
 	sdkWeb "github.com/kercre123/wire-pod/chipper/pkg/wirepod/sdkapp"
 	botsetup "github.com/kercre123/wire-pod/chipper/pkg/wirepod/setup"
+	sr "github.com/kercre123/wire-pod/chipper/pkg/wirepod/speechrequest"
 	"github.com/soheilhy/cmux"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -121,7 +122,7 @@ func grpcServe(l net.Listener, p *wp.Server) error {
 	return srv.Transport().Serve(l)
 }
 
-func BeginWirepodSpecific(sttInitFunc func() error, sttHandlerFunc interface{}, voiceProcessorName string) error {
+func BeginWirepodSpecific(sttInitFunc func() error, sttHandlerFunc func(sr.SpeechRequest) (string, error), voiceProcessorName string) error {
 	logger.Init()
 
 	// begin wirepod stuff
@@ -174,7 +175,7 @@ func ensureCertForHostOverride() {
 	}
 }
 
-func StartFromProgramInit(sttInitFunc func() error, sttHandlerFunc interface{}, voiceProcessorName string) {
+func StartFromProgramInit(sttInitFunc func() error, sttHandlerFunc func(sr.SpeechRequest) (string, error), voiceProcessorName string) {
 	if runtime.GOOS == "android" || runtime.GOOS == "ios" {
 		os.Setenv("DEBUG_LOGGING", "true")
 		os.Setenv("STT_SERVICE", "vosk")
