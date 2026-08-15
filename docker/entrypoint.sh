@@ -11,18 +11,32 @@ RUN_AS_USER="wirepod"
 # bind-mounted host directory (docker-compose's ./data, ./images) is
 # created by the Docker daemon owned by root the first time -- wire-pod
 # couldn't write to it otherwise. Self-heal here: if we're root, fix
-# ownership only where it's actually wrong (skip the recursive chown on
-# an already-correct, possibly large data dir on every restart), then
-# drop to the unprivileged user for everything else, including the app
-# itself. CAP_NET_BIND_SERVICE (set on the binary at build time) still
-# lets that user bind :80/:443 afterward.
+# ownership only where it's actually wrong, then drop to the
+# unprivileged user for everything else, including the app itself.
+# CAP_NET_BIND_SERVICE (set on the binary at build time) still lets
+# that user bind :80/:443 afterward.
+#
+# This used to check only whether the top-level directory itself
+# (DATA_ROOT/IMAGES_ROOT) was correctly owned, and did a full `chown -R`
+# only if not -- cheap, but blind to drift anywhere below that top
+# level: a subdirectory or file left with stale ownership (an older
+# image version that ran under a different uid scheme, a manual
+# host-side edit, any other one-off intervention) never gets caught or
+# fixed once the top-level directory itself is already correct, making
+# that specific path permanently unwritable by the unprivileged user --
+# reproduced directly: a `chipper/` subdirectory owned by a different
+# uid survives repeated restarts untouched, and the app's actual write
+# there (a temp file for its atomic-rename config save) fails with a
+# hard "Permission denied", not a graceful fallback. find + chown only
+# what's actually wrong, at any depth, instead -- close to the cost of
+# the old top-level-only check when nothing has drifted, but correct
+# when something has.
 if [ "$(id -u)" = "0" ]; then
     mkdir -p "${DATA_ROOT}" "${IMAGES_ROOT}"
     target_uid="$(id -u "${RUN_AS_USER}")"
+    target_gid="$(id -g "${RUN_AS_USER}")"
     for dir in "${DATA_ROOT}" "${IMAGES_ROOT}"; do
-        if [ "$(stat -c %u "${dir}")" != "${target_uid}" ]; then
-            chown -R "${RUN_AS_USER}:${RUN_AS_USER}" "${dir}"
-        fi
+        find "${dir}" \( ! -uid "${target_uid}" -o ! -gid "${target_gid}" \) -exec chown "${RUN_AS_USER}:${RUN_AS_USER}" {} +
     done
     # setpriv only changes uid/gid/groups -- it does not touch the
     # environment, so without this HOME stays "/root" (root's own HOME,
