@@ -621,22 +621,39 @@ func DisableCachingAndSniffing(next http.Handler) http.Handler {
 
 func BeginServer() {
 	scripting.RegisterScriptingAPI()
-	if os.Getenv("JDOCS_PINGER_ENABLED") == "false" {
+
+	if vars.SDKEnabled() {
+		if os.Getenv("JDOCS_PINGER_ENABLED") == "false" {
+			PingerEnabled = false
+			logger.Println("Jdocs pinger has been disabled")
+		}
+		http.HandleFunc("/api-sdk/", SdkapiHandler)
+		if runtime.GOOS == "android" || runtime.GOOS == "ios" {
+			serverFiles = filepath.Join(vars.AndroidPath, "/static/webroot")
+		}
+		fileServer := http.FileServer(http.Dir(serverFiles))
+		http.Handle("/sdk-app", DisableCachingAndSniffing(fileServer))
+		InitJdocsPinger()
+		// camstream
+		http.HandleFunc("/cam-stream", camStreamHandler)
+	} else {
+		// Bot remote-control endpoints, the file-served SDK app, camera
+		// streaming, and the jdocs pinger (and the connCheck-triggered
+		// mDNS discovery/jdocs pinging it drives) are all off. /ok itself
+		// (below) still has to be served regardless: it's what
+		// server_config.json's "check" field points a paired robot at
+		// for its basic periodic connectivity check-in (no port in that
+		// URL means port 80, same as here) -- that's not an SDK feature,
+		// every robot relies on it independent of whether SDK-specific
+		// features are wanted.
 		PingerEnabled = false
-		logger.Println("Jdocs pinger has been disabled")
+		logger.Println("SDK app server disabled (SDK_ENABLED=false): only the /ok connectivity check is served on port 80; bot remote-control features and the jdocs pinger are off.")
 	}
-	http.HandleFunc("/api-sdk/", SdkapiHandler)
-	if runtime.GOOS == "android" || runtime.GOOS == "ios" {
-		serverFiles = filepath.Join(vars.AndroidPath, "/static/webroot")
-	}
-	fileServer := http.FileServer(http.Dir(serverFiles))
-	http.Handle("/sdk-app", DisableCachingAndSniffing(fileServer))
-	// in jdocspinger.go
+
+	// in jdocspinger.go -- always registered, see comment above.
 	http.HandleFunc("/ok:80", connCheck)
 	http.HandleFunc("/ok", connCheck)
-	InitJdocsPinger()
-	// camstream
-	http.HandleFunc("/cam-stream", camStreamHandler)
+
 	logger.Println("Starting SDK app")
 	fmt.Printf("Starting server at port 80 for connCheck\n")
 	ipAddr := vars.GetOutboundIP().String()

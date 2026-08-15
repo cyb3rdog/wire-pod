@@ -127,11 +127,12 @@ func BeginWirepodSpecific(sttInitFunc func() error, sttHandlerFunc interface{}, 
 	vars.Init()
 	var err error
 	voiceProcessor, err = wp.New(sttInitFunc, sttHandlerFunc, voiceProcessorName)
-	if vars.SDKEnabled() {
-		go sdkWeb.BeginServer()
-	} else {
-		logger.Println("SDK app server disabled (SDK_ENABLED=false): no port 80 listener, no bot remote-control features, no jdocs pinger. The core voice pipeline (STT, intents, knowledge graph, gRPC on :443) is unaffected.")
-	}
+	// BeginServer always binds :80 -- even with SDK_ENABLED=false, it
+	// still needs to serve /ok, which server_config.json's "check" field
+	// points paired robots at for their basic connectivity check-in.
+	// SDK_ENABLED only decides what else BeginServer registers alongside
+	// that. See sdkapp.BeginServer.
+	go sdkWeb.BeginServer()
 	http.HandleFunc("/api-chipper/", ChipperHTTPApi)
 	if err != nil {
 		return err
