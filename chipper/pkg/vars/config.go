@@ -174,7 +174,26 @@ func WriteSTT() {
 }
 
 func ReadConfig() {
-	if _, err := os.Stat(ApiConfigPath); err != nil {
+	// A plain os.Stat check can't tell "no config yet" apart from "a
+	// zero-byte file sits at this path" -- and docker/entrypoint.sh's
+	// generic persist_files()/link_file() helper deliberately creates an
+	// empty placeholder file on the bind-mounted data volume for every
+	// entry it manages (apiConfig.json included) whenever neither the
+	// volume nor the image already has one, precisely so the destination
+	// always exists for it to symlink to. On a genuinely fresh install
+	// that placeholder exists before this process ever runs, so os.Stat
+	// alone would report "exists" and fall into the read-existing-config
+	// branch below, which fails to unmarshal zero bytes and returns
+	// immediately WITHOUT ever calling CreateConfigFromEnv or writeConfig
+	// -- env vars never get seeded, and the file stays empty forever,
+	// since nothing else writes to it until some unrelated dashboard
+	// action happens to call WriteConfigToDisk. Reproduced end-to-end
+	// with the real entrypoint.sh and a real compiled binary against a
+	// brand-new data directory. Treating an empty file the same as a
+	// missing one -- both mean "nothing has been configured yet" -- fixes
+	// this at the source instead of teaching the shell script about JSON.
+	info, err := os.Stat(ApiConfigPath)
+	if err != nil || info.Size() == 0 {
 		CreateConfigFromEnv()
 		logger.Println("API config JSON created")
 	} else {
