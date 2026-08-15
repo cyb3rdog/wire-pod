@@ -37,6 +37,10 @@
           <a href="#" onclick="showLanguage(); return false;"><i class="fa-solid fa-language" id="icon-Language"
               name="icon"></i><br />Set Language</a>
         </div>
+        <div class="main-nav-child">
+          <a href="#" onclick="showSTTService(); return false;"><i class="fa-solid fa-microphone" id="icon-STTService"
+              name="icon"></i><br />STT Service</a>
+        </div>
         <!--<div class="main-nav-child"><a href="#" onclick="showRestart(); return false;"><i class="fa solid fa-arrow-rotate-right" id="icon-Restart" name="icon"></i><br/>Restart Wire-Pod</a></div> -->
       </div>
       <hr />
@@ -242,6 +246,40 @@
         </div>
         <hr />
       </div>
+
+      <div id="section-stt-service" style="display: none">
+        <h3>STT Service</h3>
+        <hr class="small-hr">
+        <div>
+          <p>Choose which speech-to-text backend wire-pod uses. Switching takes effect immediately, no restart
+            needed.</p>
+          <hr class="small-hr">
+          <div id="addSTTServiceAPI"></div>
+          <form id="sttServiceForm">
+            <label for="sttServiceSelect">STT Service:</label>
+            <select name="sttServiceSelect" id="sttServiceSelect" form="sttServiceForm" onchange="checkSTTService()">
+              <option value="vosk">Vosk (local, offline)</option>
+              <option value="whisper">External Whisper (HTTP)</option>
+            </select>
+            <span id="whisperServiceInput" style="display: none">
+              <small class="desc">Speaks the OpenAI /v1/audio/transcriptions API. Leave the endpoint blank to use
+                the real OpenAI API (an API key is then required), or point it at a self-hosted OpenAI-compatible
+                server such as faster-whisper-server (a key is usually not needed).</small><br />
+              <label for="whisperURL">Endpoint URL <small class="desc">(blank = api.openai.com)</small>:</label>
+              <input type="text" name="whisperURL" id="whisperURL" placeholder="http://faster-whisper:8000" /><br />
+              <label for="whisperKey">API Key <small class="desc">(optional for most self-hosted
+                  servers)</small>:</label>
+              <input type="text" name="whisperKey" id="whisperKey" /><br />
+              <label for="whisperModel">Model <small class="desc">(blank = whisper-1)</small>:</label>
+              <input type="text" name="whisperModel" id="whisperModel" placeholder="whisper-1" /><br />
+            </span>
+          </form>
+          <hr class="small-hr">
+          <button onclick="sendSTTServiceConfig()">Apply STT Service</button>
+          <div id="addSTTServiceAPIStatus"></div>
+          <hr />
+        </div>
+      </div>
     </div>
   </div>
 </body>
@@ -251,6 +289,7 @@
 <script>
   updateWeatherAPI();
   updateKGAPI();
+  updateSTTServiceInfo();
 </script>
 
 </html>

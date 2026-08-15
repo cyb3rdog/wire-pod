@@ -30,11 +30,15 @@ var stiHandler func(sr.SpeechRequest) (string, map[string]string, error)
 
 var isSti bool = false
 
+// ReloadVosk re-runs the compiled binary's STT init function after a
+// settings change (language, or -- via cmd/vosk's dispatcher -- the
+// active service itself). Previously gated to "vosk"/"whisper.cpp" only;
+// unconditional now that cmd/vosk's Init can itself be a dispatcher
+// routing to whichever backend is actually selected, and every other
+// backend's Init is a cheap, idempotent no-op safe to re-run.
 func ReloadVosk() {
-	if vars.APIConfig.STT.Service == "vosk" || vars.APIConfig.STT.Service == "whisper.cpp" {
-		vars.SttInitFunc()
-		vars.IntentList, _ = vars.LoadIntents()
-	}
+	vars.SttInitFunc()
+	vars.IntentList, _ = vars.LoadIntents()
 }
 
 // New returns a new server

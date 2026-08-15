@@ -14,20 +14,53 @@ import (
 	"github.com/go-audio/audio"
 	"github.com/go-audio/wav"
 	"github.com/kercre123/wire-pod/chipper/pkg/logger"
+	"github.com/kercre123/wire-pod/chipper/pkg/vars"
 	sr "github.com/kercre123/wire-pod/chipper/pkg/wirepod/speechrequest"
 	"github.com/orcaman/writerseeker"
 )
 
 var Name string = "whisper"
 
+// defaultBaseURL/defaultModel apply when the dashboard/env vars haven't set
+// a value, matching the real OpenAI API. Any OpenAI-compatible server (e.g.
+// a self-hosted faster-whisper-server) works by pointing BaseURL elsewhere.
+const (
+	defaultBaseURL = "https://api.openai.com"
+	defaultModel   = "whisper-1"
+)
+
 type openAiResp struct {
 	Text string `json:"text"`
 }
 
+// resolvedBaseURL/resolvedAPIKey/resolvedModel read live from
+// vars.APIConfig so a dashboard change takes effect on the next request,
+// without a restart.
+func resolvedBaseURL() string {
+	if v := vars.APIConfig.STT.Whisper.BaseURL; v != "" {
+		return strings.TrimRight(v, "/")
+	}
+	return defaultBaseURL
+}
+
+func resolvedAPIKey() string {
+	if v := vars.APIConfig.STT.Whisper.APIKey; v != "" {
+		return v
+	}
+	// OPENAI_KEY is kept as a fallback for existing env-var-only setups.
+	return os.Getenv("OPENAI_KEY")
+}
+
+func resolvedModel() string {
+	if v := vars.APIConfig.STT.Whisper.Model; v != "" {
+		return v
+	}
+	return defaultModel
+}
+
 func Init() error {
-	if os.Getenv("OPENAI_KEY") == "" {
-		logger.Println("This is an early implementation of the Whisper API which has not been implemented into the web interface. You must set the OPENAI_KEY env var.")
-		//os.Exit(1)
+	if resolvedAPIKey() == "" && resolvedBaseURL() == defaultBaseURL {
+		logger.Println("Whisper STT: no API key configured and no custom endpoint set. Set one via the dashboard's STT Service settings, or the OPENAI_KEY/STT_WHISPER_KEY/STT_WHISPER_URL env vars, before selecting this backend.")
 	}
 	return nil
 }
@@ -78,18 +111,20 @@ func newAudioIntBuffer(r io.Reader) (*audio.IntBuffer, error) {
 }
 
 func makeOpenAIReq(in []byte) string {
-	url := "https://api.openai.com/v1/audio/transcriptions"
+	url := resolvedBaseURL() + "/v1/audio/transcriptions"
 
 	buf := new(bytes.Buffer)
 	w := multipart.NewWriter(buf)
-	w.WriteField("model", "whisper-1")
+	w.WriteField("model", resolvedModel())
 	sendFile, _ := w.CreateFormFile("file", "audio.mp3")
 	sendFile.Write(in)
 	w.Close()
 
 	httpReq, _ := http.NewRequest("POST", url, buf)
 	httpReq.Header.Set("Content-Type", w.FormDataContentType())
-	httpReq.Header.Set("Authorization", "Bearer "+os.Getenv("OPENAI_KEY"))
+	if key := resolvedAPIKey(); key != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+key)
+	}
 
 	// 60 second timeout for Whisper API (SEC-004)
 	client := &http.Client{Timeout: 60 * time.Second}

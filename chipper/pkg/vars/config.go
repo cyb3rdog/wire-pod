@@ -41,6 +41,16 @@ type apiConfig struct {
 	STT struct {
 		Service  string `json:"provider"`
 		Language string `json:"language"`
+		// Whisper holds connection details for the HTTP Whisper backend,
+		// which speaks the OpenAI /v1/audio/transcriptions API -- either
+		// the real OpenAI API or a self-hosted compatible server (e.g.
+		// faster-whisper-server). BaseURL/Model default when empty; see
+		// stt/whisper.
+		Whisper struct {
+			BaseURL string `json:"base_url"`
+			APIKey  string `json:"api_key"`
+			Model   string `json:"model"`
+		} `json:"whisper"`
 	} `json:"STT"`
 	Server struct {
 		// false for ip, true for escape pod
@@ -51,6 +61,10 @@ type apiConfig struct {
 	PastInitialSetup bool `json:"pastinitialsetup"`
 	Dashboard        struct {
 		PasswordHash string `json:"password_hash,omitempty"`
+		// SessionSecret backs the dashboard's session cookie. Persisting
+		// it (instead of a fresh random value per process start) lets a
+		// login survive a restart; see dashboardauth.getSessionToken.
+		SessionSecret string `json:"session_secret,omitempty"`
 	} `json:"dashboard"`
 }
 
@@ -104,6 +118,19 @@ func WriteSTT() {
 	if os.Getenv("STT_SERVICE") == "vosk" || os.Getenv("STT_SERVICE") == "whisper.cpp" {
 		APIConfig.STT.Language = os.Getenv("STT_LANGUAGE")
 	}
+	// Whisper connection details are seeded independently of which
+	// service is the active default, so a user can pre-configure an
+	// external endpoint via compose.yaml and switch to it later from the
+	// dashboard without retyping it.
+	if url := os.Getenv("STT_WHISPER_URL"); url != "" {
+		APIConfig.STT.Whisper.BaseURL = url
+	}
+	if key := os.Getenv("STT_WHISPER_KEY"); key != "" {
+		APIConfig.STT.Whisper.APIKey = key
+	}
+	if model := os.Getenv("STT_WHISPER_MODEL"); model != "" {
+		APIConfig.STT.Whisper.Model = model
+	}
 }
 
 func ReadConfig() {
@@ -128,10 +155,14 @@ func ReadConfig() {
 			logger.Println(err)
 			return
 		}
-		// stt service is the only thing controlled by shell
-		if APIConfig.STT.Service != os.Getenv("STT_SERVICE") {
-			WriteSTT()
-		}
+		// Env vars only ever seed the config the first time it's
+		// created (CreateConfigFromEnv, above); once apiConfig.json
+		// exists, the dashboard is authoritative and survives restarts
+		// even if compose.yaml/the environment still says something
+		// else. This used to be a special case for STT.Service that
+		// resynced from the env var on every boot, silently reverting
+		// dashboard changes on restart -- removed for consistency with
+		// every other setting.
 		if !APIConfig.HasReadFromEnv {
 			if APIConfig.Server.Port != os.Getenv("DDL_RPC_PORT") {
 				APIConfig.HasReadFromEnv = true

@@ -430,6 +430,47 @@ function updateSTTLanguageDownload() {
   }, 500);
 }
 
+function checkSTTService() {
+  const service = getE("sttServiceSelect").value;
+  getE("whisperServiceInput").style.display = service === "whisper" ? "block" : "none";
+}
+
+function sendSTTServiceConfig() {
+  const data = {
+    service: getE("sttServiceSelect").value,
+    whisperURL: getE("whisperURL").value,
+    whisperKey: getE("whisperKey").value,
+    whisperModel: getE("whisperModel").value,
+  };
+
+  fetch("/api/set_stt_service", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  })
+    .then((response) => response.text())
+    .then((response) => {
+      displayMessage("addSTTServiceAPIStatus", response);
+      alert(response);
+    });
+}
+
+function updateSTTServiceInfo() {
+  fetch("/api/get_stt_info")
+    .then((response) => response.json())
+    .then((data) => {
+      getE("sttServiceSelect").value = data.provider === "whisper" ? "whisper" : "vosk";
+      if (data.whisper) {
+        getE("whisperURL").value = data.whisper.base_url || "";
+        getE("whisperKey").value = data.whisper.api_key || "";
+        getE("whisperModel").value = data.whisper.model || "";
+      }
+      checkSTTService();
+    });
+}
+
 function sendRestart() {
   fetch("/api/reset")
     .then((response) => response.text())
@@ -573,7 +614,7 @@ function checkUpdate() {
 }
 
 function showLanguage() {
-  toggleVisibility(["section-weather", "section-restart", "section-kg", "section-language"], "section-language", "icon-Language");
+  toggleVisibility(["section-weather", "section-restart", "section-kg", "section-language", "section-stt-service"], "section-language", "icon-Language");
   fetch("/api/get_stt_info")
     .then((response) => response.json())
     .then((parsed) => {
@@ -597,11 +638,15 @@ function showIntents() {
 }
 
 function showWeather() {
-  toggleVisibility(["section-weather", "section-restart", "section-language", "section-kg"], "section-weather", "icon-Weather");
+  toggleVisibility(["section-weather", "section-restart", "section-language", "section-kg", "section-stt-service"], "section-weather", "icon-Weather");
 }
 
 function showKG() {
-  toggleVisibility(["section-weather", "section-restart", "section-language", "section-kg"], "section-kg", "icon-KG");
+  toggleVisibility(["section-weather", "section-restart", "section-language", "section-kg", "section-stt-service"], "section-kg", "icon-KG");
+}
+
+function showSTTService() {
+  toggleVisibility(["section-weather", "section-restart", "section-language", "section-kg", "section-stt-service"], "section-stt-service", "icon-STTService");
 }
 
 function toggleVisibility(sections, sectionToShow, iconId) {

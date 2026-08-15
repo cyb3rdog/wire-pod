@@ -42,14 +42,15 @@ jobs:
 
       # vosk/coqui/whisper.cpp backends need their own native libraries
       # (installed by the Docker build below) and aren't vet/test-checked
-      # here; every other package is.
+      # here; every other package is. stt/dispatch is excluded too since
+      # it imports stt/vosk to route between backends at runtime.
       - name: go vet
         working-directory: chipper
-        run: go vet $(go list ./... | grep -v -E '/(cmd/coqui|cmd/vosk|cmd/experimental/whisper\.cpp|stt/coqui|stt/vosk|stt/whisper\.cpp)$')
+        run: go vet $(go list ./... | grep -v -E '/(cmd/coqui|cmd/vosk|cmd/experimental/whisper\.cpp|stt/coqui|stt/vosk|stt/whisper\.cpp|stt/dispatch)$')
 
       - name: go test
         working-directory: chipper
-        run: go test -race $(go list ./... | grep -v -E '/(cmd/coqui|cmd/vosk|cmd/experimental/whisper\.cpp|stt/coqui|stt/vosk|stt/whisper\.cpp)$')
+        run: go test -race $(go list ./... | grep -v -E '/(cmd/coqui|cmd/vosk|cmd/experimental/whisper\.cpp|stt/coqui|stt/vosk|stt/whisper\.cpp|stt/dispatch)$')
 
   build:
     needs: verify

@@ -15,10 +15,11 @@ clean:
 
 # Excludes the STT backends that need their own native libraries
 # (vosk/coqui/whisper.cpp) installed to even compile -- same filter the
-# CI verify job uses. `make build` above still builds the real vosk
-# binary if those libs are present on your system.
+# CI verify job uses. stt/dispatch is excluded too since it imports
+# stt/vosk to route between backends. `make build` above still builds
+# the real vosk binary if those libs are present on your system.
 test:
-	@go test $$(go list ./... | grep -v -E '/(cmd/coqui|cmd/vosk|cmd/experimental/whisper\.cpp|stt/coqui|stt/vosk|stt/whisper\.cpp)$$')
+	@go test $$(go list ./... | grep -v -E '/(cmd/coqui|cmd/vosk|cmd/experimental/whisper\.cpp|stt/coqui|stt/vosk|stt/whisper\.cpp|stt/dispatch)$$')
 
 run: build
 	@./start.sh

@@ -45,6 +45,8 @@ func apiHandler(w http.ResponseWriter, r *http.Request) {
 		handleGetKGAPI(w)
 	case "set_stt_info":
 		handleSetSTTInfo(w, r)
+	case "set_stt_service":
+		handleSetSTTService(w, r)
 	case "get_download_status":
 		handleGetDownloadStatus(w)
 	case "get_stt_info":
@@ -250,6 +252,42 @@ func handleSetSTTInfo(w http.ResponseWriter, r *http.Request) {
 	processreqs.ReloadVosk()
 	logger.Println("Reloaded voice processor successfully")
 	fmt.Fprint(w, "Language switched successfully.")
+}
+
+// handleSetSTTService switches the active STT backend and, for the
+// external Whisper-HTTP backend, its connection details. Kept separate
+// from handleSetSTTInfo (language-only, vosk/whisper.cpp-specific
+// validation) since the Whisper backend has no language selector of its
+// own. get_stt_info already returns vars.APIConfig.STT in full
+// (including the Whisper sub-struct), so there's no separate GET route.
+func handleSetSTTService(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		Service      string `json:"service"`
+		WhisperURL   string `json:"whisperURL"`
+		WhisperKey   string `json:"whisperKey"`
+		WhisperModel string `json:"whisperModel"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	switch request.Service {
+	case "vosk":
+		vars.APIConfig.STT.Service = "vosk"
+	case "whisper":
+		vars.APIConfig.STT.Service = "whisper"
+		vars.APIConfig.STT.Whisper.BaseURL = strings.TrimSpace(request.WhisperURL)
+		vars.APIConfig.STT.Whisper.APIKey = strings.TrimSpace(request.WhisperKey)
+		vars.APIConfig.STT.Whisper.Model = strings.TrimSpace(request.WhisperModel)
+	default:
+		http.Error(w, "service must be vosk or whisper", http.StatusBadRequest)
+		return
+	}
+	vars.APIConfig.PastInitialSetup = true
+	vars.WriteConfigToDisk()
+	processreqs.ReloadVosk()
+	logger.Println("Reloaded voice processor successfully")
+	fmt.Fprint(w, "STT service switched successfully.")
 }
 
 func handleGetDownloadStatus(w http.ResponseWriter) {
