@@ -4,7 +4,7 @@ wire-pod is a self-hosted reimplementation of Anki's "Chipper" cloud service for
 
 ## What it does
 
-- Speech-to-text for Vector's voice commands, via a pluggable backend: [Vosk](https://alphacephei.com/vosk/) (offline, default), [Picovoice Leopard](https://picovoice.ai/platform/leopard/), OpenAI's Whisper API, or a local [whisper.cpp](https://github.com/ggerganov/whisper.cpp) build.
+- Speech-to-text for Vector's voice commands, via a pluggable backend: [Vosk](https://alphacephei.com/vosk/) (offline, default), [Picovoice Leopard](https://picovoice.ai/platform/leopard/), a local [whisper.cpp](https://github.com/ggerganov/whisper.cpp) build, or an HTTP Whisper endpoint -- the real OpenAI API, or a self-hosted OpenAI-compatible server such as `faster-whisper-server`. The Docker image builds Vosk and the HTTP Whisper backend into the same binary and lets you switch between them live from the dashboard's **Server Settings → STT Service** page, no rebuild or restart required.
 - Built-in intent matching for Vector's stock voice commands (time, weather, jokes, movement, etc.), plus **custom intents** you define yourself: match a phrase to a shell command, a Lua script, or an existing robot intent.
 - Optional LLM/knowledge-graph fallback: when nothing matches, forward the transcribed speech to an OpenAI-compatible API and have Vector speak the response.
 - A Go plugin system (`chipper/plugins/`) for hooking new voice commands into the pipeline with compiled `.so` plugins. Go's `plugin` package requires the plugin to be built with the exact same Go toolchain version and dependency versions as the wire-pod binary loading it — a mismatch fails to load at runtime rather than at compile time, so build plugins against the same `go.mod`/`go.sum` and Go version wire-pod itself uses, and rebuild them whenever you update wire-pod.
@@ -22,7 +22,9 @@ wire-pod runs the same jdocs/token/chipper gRPC services Vector's firmware expec
 docker compose up -d --build
 ```
 
-Run from the repository root. This builds and runs the image described in `dockerfile`/`compose.yaml`, persisting config, certs, and jdocs under a named volume. See `docker/entrypoint.sh` for the environment variables it honors (`WIREPOD_STT_SERVICE`, `WIREPOD_STT_LANGUAGE`, `WIREPOD_DEBUG_LOGGING`, etc).
+Run from the repository root. This builds and runs the image described in `dockerfile`/`compose.yaml`, persisting config, certs, jdocs, and downloaded models under `./data` and generated images under `./images` -- plain directories next to the compose file, not Docker-managed volumes, so they're easy to inspect or back up directly. (The container starts as root just long enough to fix their ownership if needed, then drops to an unprivileged user -- see `docker/entrypoint.sh`.)
+
+`compose.yaml` declares every setting it supports as an environment variable with a default, so you can override any of them via a `.env` file next to `compose.yaml` or `WIREPOD_FOO=bar docker compose up -d`, without editing the file itself. These **only seed the very first boot** (before `./data/chipper/apiConfig.json` exists) -- once wire-pod is running, change settings from the dashboard's Server Settings page instead; it's authoritative from then on and survives restarts. See `compose.yaml` for the full list (STT service/language/Whisper endpoint, knowledge-graph "Ask" toggle, weather, debug logging, BLE).
 
 ### Native (Linux/macOS)
 
@@ -39,7 +41,7 @@ Open the web UI at `http://<host>:8080` to pair your Vector robot and pick an ST
 
 ## Security note
 
-The web UI (`:8080`) and the Lua-scripting/session-cert endpoints (`:80`) are gated by a password you set on first visit (see `chipper/pkg/wirepod/dashboardauth/`); the initial robot-pairing pages stay reachable before that password exists, since nothing can be logged into yet. This is meant as a baseline, not a substitute for network isolation — if you expose wire-pod beyond your LAN, still put it behind your own reverse proxy with auth (e.g. Caddy with `basicauth`, or an authenticating proxy in front of it) rather than relying on it alone.
+The web UI (`:8080`) and the Lua-scripting/session-cert endpoints (`:80`) are gated by a password you set on first visit (see `chipper/pkg/wirepod/dashboardauth/`); the initial robot-pairing pages stay reachable before that password exists, since nothing can be logged into yet. The login session is persisted, so a restart doesn't sign you back out -- it rotates (invalidating any existing session) only when the password itself changes. This is meant as a baseline, not a substitute for network isolation — if you expose wire-pod beyond your LAN, still put it behind your own reverse proxy with auth (e.g. Caddy with `basicauth`, or an authenticating proxy in front of it) rather than relying on it alone.
 
 ## Repository layout
 
