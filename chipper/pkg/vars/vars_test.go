@@ -8,70 +8,128 @@ import (
 	"time"
 )
 
-// TestSDKEnabledDefaultsOnAndRespectsFalse guards the SDK app server's
-// off switch: unset (or any value other than "false") must default to
-// enabled, matching existing behavior for anyone who never set this var.
-func TestSDKEnabledDefaultsOnAndRespectsFalse(t *testing.T) {
-	t.Cleanup(func() { os.Unsetenv("SDK_ENABLED") })
+// TestSDKEnabledPort80EnabledPort8084EnabledReadAdvancedConfig guards that
+// these three accessors are now plain reads of APIConfig.Advanced -- a
+// dashboard/apiConfig setting like everything else, not a live env-var
+// read. Env vars only ever seed Advanced once, via
+// migrateAdvancedSettings (see TestMigrateAdvancedSettings*); these
+// functions themselves must not consult the environment at all anymore.
+func TestSDKEnabledPort80EnabledPort8084EnabledReadAdvancedConfig(t *testing.T) {
+	origAdvanced := APIConfig.Advanced
+	t.Cleanup(func() { APIConfig.Advanced = origAdvanced })
 
-	os.Unsetenv("SDK_ENABLED")
-	if !SDKEnabled() {
-		t.Error("SDKEnabled() = false with the env var unset, want true (default on)")
+	APIConfig.Advanced.SDKEnabled = true
+	APIConfig.Advanced.Port80Enabled = true
+	APIConfig.Advanced.Port8084Enabled = true
+	if !SDKEnabled() || !Port80Enabled() || !Port8084Enabled() {
+		t.Error("accessors = false with Advanced fields true, want true")
 	}
 
+	APIConfig.Advanced.SDKEnabled = false
+	APIConfig.Advanced.Port80Enabled = false
+	APIConfig.Advanced.Port8084Enabled = false
+	if SDKEnabled() || Port80Enabled() || Port8084Enabled() {
+		t.Error("accessors = true with Advanced fields false, want false")
+	}
+
+	// Setting the old env vars must have no effect at all now.
 	os.Setenv("SDK_ENABLED", "true")
-	if !SDKEnabled() {
-		t.Error("SDKEnabled() = false with SDK_ENABLED=true, want true")
-	}
-
-	os.Setenv("SDK_ENABLED", "false")
-	if SDKEnabled() {
-		t.Error("SDKEnabled() = true with SDK_ENABLED=false, want false")
-	}
-}
-
-// TestPort80EnabledDefaultsOnAndRespectsFalse guards the same pattern for
-// the port-80 socket toggle, which is deliberately independent of
-// SDKEnabled (see sdkapp.BeginServer).
-func TestPort80EnabledDefaultsOnAndRespectsFalse(t *testing.T) {
-	t.Cleanup(func() { os.Unsetenv("PORT80_ENABLED") })
-
-	os.Unsetenv("PORT80_ENABLED")
-	if !Port80Enabled() {
-		t.Error("Port80Enabled() = false with the env var unset, want true (default on)")
-	}
-
 	os.Setenv("PORT80_ENABLED", "true")
-	if !Port80Enabled() {
-		t.Error("Port80Enabled() = false with PORT80_ENABLED=true, want true")
-	}
-
-	os.Setenv("PORT80_ENABLED", "false")
-	if Port80Enabled() {
-		t.Error("Port80Enabled() = true with PORT80_ENABLED=false, want false")
+	os.Setenv("NO8084", "false") // NO8084=false historically meant "enabled"
+	t.Cleanup(func() {
+		os.Unsetenv("SDK_ENABLED")
+		os.Unsetenv("PORT80_ENABLED")
+		os.Unsetenv("NO8084")
+	})
+	if SDKEnabled() || Port80Enabled() || Port8084Enabled() {
+		t.Error("accessors changed based on env vars, want them to only ever read Advanced (env vars only matter during the one-time migration)")
 	}
 }
 
-// TestPort8084EnabledInvertedSense guards NO8084's semantics, which are
-// deliberately inverted relative to every other toggle in this file
-// (true means disabled, not enabled) -- see the doc comment on
-// Port8084Enabled for why this var was kept as-is instead of migrated.
-func TestPort8084EnabledInvertedSense(t *testing.T) {
-	t.Cleanup(func() { os.Unsetenv("NO8084") })
+// TestMigrateAdvancedSettingsSeedsFromLegacyEnvVars guards the one-time
+// upgrade path: an install predating the Advanced struct (AdvancedMigrated
+// still false, zero-value fields) must pick up whatever the legacy env
+// vars say right now, including NO8084's inverted sense, so existing
+// compose.yaml-based deployments don't silently change behavior on
+// upgrade.
+func TestMigrateAdvancedSettingsSeedsFromLegacyEnvVars(t *testing.T) {
+	origAdvanced := APIConfig.Advanced
+	origMigrated := APIConfig.AdvancedMigrated
+	t.Cleanup(func() {
+		APIConfig.Advanced = origAdvanced
+		APIConfig.AdvancedMigrated = origMigrated
+		for _, v := range []string{"VOSK_THERMAL_ENABLED", "VOSK_WITH_GRAMMER", "DISABLE_MDNS", "NO8084", "JDOCS_PINGER_ENABLED", "SDK_ENABLED", "PORT80_ENABLED"} {
+			os.Unsetenv(v)
+		}
+	})
 
-	os.Unsetenv("NO8084")
-	if !Port8084Enabled() {
-		t.Error("Port8084Enabled() = false with NO8084 unset, want true (default on)")
+	APIConfig.Advanced.VoskThermalEnabled = false
+	APIConfig.Advanced.VoskWithGrammar = false
+	APIConfig.Advanced.DisableMDNS = false
+	APIConfig.Advanced.Port8084Enabled = false
+	APIConfig.Advanced.JdocsPingerEnabled = false
+	APIConfig.Advanced.SDKEnabled = false
+	APIConfig.Advanced.Port80Enabled = false
+	APIConfig.AdvancedMigrated = false
+
+	os.Setenv("VOSK_THERMAL_ENABLED", "false")
+	os.Setenv("VOSK_WITH_GRAMMER", "true")
+	os.Setenv("DISABLE_MDNS", "true")
+	os.Setenv("NO8084", "true") // inverted: true means disabled
+	os.Setenv("JDOCS_PINGER_ENABLED", "false")
+	os.Setenv("SDK_ENABLED", "false")
+	os.Setenv("PORT80_ENABLED", "false")
+
+	migrateAdvancedSettings()
+
+	if !APIConfig.AdvancedMigrated {
+		t.Fatal("AdvancedMigrated = false after migrateAdvancedSettings, want true")
 	}
-
-	os.Setenv("NO8084", "true")
-	if Port8084Enabled() {
-		t.Error("Port8084Enabled() = true with NO8084=true, want false")
+	if APIConfig.Advanced.VoskThermalEnabled {
+		t.Error("VoskThermalEnabled = true, want false (VOSK_THERMAL_ENABLED=false)")
 	}
+	if !APIConfig.Advanced.VoskWithGrammar {
+		t.Error("VoskWithGrammar = false, want true (VOSK_WITH_GRAMMER=true)")
+	}
+	if !APIConfig.Advanced.DisableMDNS {
+		t.Error("DisableMDNS = false, want true (DISABLE_MDNS=true)")
+	}
+	if APIConfig.Advanced.Port8084Enabled {
+		t.Error("Port8084Enabled = true, want false (NO8084=true, inverted sense)")
+	}
+	if APIConfig.Advanced.JdocsPingerEnabled {
+		t.Error("JdocsPingerEnabled = true, want false (JDOCS_PINGER_ENABLED=false)")
+	}
+	if APIConfig.Advanced.SDKEnabled {
+		t.Error("SDKEnabled = true, want false (SDK_ENABLED=false)")
+	}
+	if APIConfig.Advanced.Port80Enabled {
+		t.Error("Port80Enabled = true, want false (PORT80_ENABLED=false)")
+	}
+}
 
-	os.Setenv("NO8084", "false")
-	if !Port8084Enabled() {
-		t.Error("Port8084Enabled() = false with NO8084=false, want true")
+// TestMigrateAdvancedSettingsRunsOnce guards the migration flag itself:
+// once AdvancedMigrated is true, changing env vars and calling
+// migrateAdvancedSettings again must be a no-op -- this is what makes
+// Advanced dashboard-authoritative after the first boot, exactly like
+// every other setting in this struct.
+func TestMigrateAdvancedSettingsRunsOnce(t *testing.T) {
+	origAdvanced := APIConfig.Advanced
+	origMigrated := APIConfig.AdvancedMigrated
+	t.Cleanup(func() {
+		APIConfig.Advanced = origAdvanced
+		APIConfig.AdvancedMigrated = origMigrated
+		os.Unsetenv("SDK_ENABLED")
+	})
+
+	APIConfig.AdvancedMigrated = true
+	APIConfig.Advanced.SDKEnabled = true // simulating a value set via the dashboard
+
+	os.Setenv("SDK_ENABLED", "false") // stale env var, should be ignored now
+	migrateAdvancedSettings()
+
+	if !APIConfig.Advanced.SDKEnabled {
+		t.Error("migrateAdvancedSettings overwrote an already-migrated config from a stale env var")
 	}
 }
 

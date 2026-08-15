@@ -13,13 +13,15 @@ services:
       WIREPOD_DATA_DIR: /data
       WIREPOD_IMAGES_DIR: /images
 
-      # Everything below only seeds wire-pod's config the very first time
-      # it starts (before chipper/apiConfig.json exists in ./data). After
-      # that, the dashboard (Server Settings) is authoritative and these
-      # are ignored on restart -- change settings there, not here, once
-      # you're set up. Override any of these via a `.env` file next to
-      # this compose.yaml, or `WIREPOD_FOO=bar docker compose up -d`,
-      # without editing this file.
+      # Everything below only seeds wire-pod's config the first time it's
+      # read -- either a genuinely fresh start (no chipper/apiConfig.json
+      # in ./data yet) or, for the "Advanced Settings" toggles further
+      # down, the first read after upgrading from a version that
+      # predates that page. After that, the dashboard (Server Settings)
+      # is authoritative and these are ignored on restart -- change
+      # settings there, not here, once you're set up. Override any of
+      # these via a `.env` file next to this compose.yaml, or
+      # `WIREPOD_FOO=bar docker compose up -d`, without editing this file.
       WIREPOD_DEBUG_LOGGING: ${WIREPOD_DEBUG_LOGGING:-true}
       WIREPOD_USE_INBUILT_BLE: ${WIREPOD_USE_INBUILT_BLE:-false}
 
@@ -61,18 +63,21 @@ services:
       WIREPOD_HOST_OVERRIDE: ${WIREPOD_HOST_OVERRIDE:-}
       WIREPOD_SERVER_PORT: ${WIREPOD_SERVER_PORT:-}
 
-      # These have no dashboard settings page at all, so unlike everything
-      # above they apply live on every restart, not just the first boot.
-      # VOSK_THERMAL_ENABLED/VOSK_WITH_GRAMMER only affect the Vosk
-      # backend (tuning meant for slow hardware like the RPi Zero 2W --
-      # pure overhead on a normal server or NAS, hence the off switch).
+      # Deployment-behavior toggles -- like everything above, these only
+      # seed the dashboard's "Advanced Settings" page (Server Settings ->
+      # Advanced) the first time it's ever read; after that, manage them
+      # there, not here. VOSK_THERMAL_ENABLED/VOSK_WITH_GRAMMER only
+      # affect the Vosk backend (tuning meant for slow hardware like the
+      # RPi Zero 2W -- pure overhead on a normal server or NAS, hence the
+      # off switch).
       WIREPOD_VOSK_THERMAL_ENABLED: ${WIREPOD_VOSK_THERMAL_ENABLED:-true}
       WIREPOD_VOSK_WITH_GRAMMER: ${WIREPOD_VOSK_WITH_GRAMMER:-false}
       WIREPOD_DISABLE_MDNS: ${WIREPOD_DISABLE_MDNS:-false}
       # Legacy :8084 TLS listener, kept for 2.0.1-era robot firmware
-      # compatibility. Inverted sense (true = disabled) -- an intentional
-      # exception to the _ENABLED naming used elsewhere in this file,
-      # since this var predates it and real deployments already set it.
+      # compatibility. Inverted sense (true = disabled) in this env var
+      # specifically (NO8084 predates the _ENABLED convention and real
+      # deployments already set it), even though the migrated dashboard
+      # field (port8084_enabled) is not inverted.
       WIREPOD_NO8084: ${WIREPOD_NO8084:-false}
       WIREPOD_JDOCS_PINGER_ENABLED: ${WIREPOD_JDOCS_PINGER_ENABLED:-true}
       # Bot remote-control features (eye color, volume, Alexa opt-in, camera
@@ -95,6 +100,8 @@ services:
       # all (e.g. only forwarding :8080 through a reverse proxy); a
       # paired robot's own connectivity check-in relies on port 80
       # specifically and will not get answered once this is off.
+      # SDK/port listener changes always need a container restart to
+      # actually rebind, whether set here or from the dashboard.
       WIREPOD_PORT80_ENABLED: ${WIREPOD_PORT80_ENABLED:-true}
     ports:
       - "80:80"

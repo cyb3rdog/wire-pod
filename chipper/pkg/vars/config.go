@@ -67,6 +67,26 @@ type apiConfig struct {
 		// existing mode can express on its own.
 		HostOverride string `json:"host_override,omitempty"`
 	} `json:"server"`
+	// Advanced holds deployment-behavior toggles that used to be
+	// env-var-only with no dashboard page and no persistence at all --
+	// user-scope preferences about *this* instance (thermal tuning, which
+	// listeners to bind, mDNS, bot remote control), not system-scope
+	// infrastructure config, so they belong here like everything else the
+	// dashboard manages. AdvancedMigrated marks a config that's already
+	// gone through the one-time migration (see migrateAdvancedSettings)
+	// that seeds these from whatever the old env vars said, so it only
+	// ever runs once per install -- these are dashboard-authoritative
+	// from that point on, same as every other setting in this struct.
+	Advanced struct {
+		VoskThermalEnabled bool `json:"vosk_thermal_enabled"`
+		VoskWithGrammar    bool `json:"vosk_with_grammar"`
+		DisableMDNS        bool `json:"disable_mdns"`
+		Port8084Enabled    bool `json:"port8084_enabled"`
+		JdocsPingerEnabled bool `json:"jdocs_pinger_enabled"`
+		SDKEnabled         bool `json:"sdk_enabled"`
+		Port80Enabled      bool `json:"port80_enabled"`
+	} `json:"advanced"`
+	AdvancedMigrated bool `json:"advanced_migrated"`
 	HasReadFromEnv   bool `json:"hasreadfromenv"`
 	PastInitialSetup bool `json:"pastinitialsetup"`
 	Dashboard        struct {
@@ -147,8 +167,34 @@ func CreateConfigFromEnv() {
 		APIConfig.PastInitialSetup = true
 	}
 	WriteSTT()
+	migrateAdvancedSettings()
 	APIConfig.HasReadFromEnv = true
 	writeConfig()
+}
+
+// migrateAdvancedSettings seeds APIConfig.Advanced from whatever the old
+// env-var-only toggles (VOSK_THERMAL_ENABLED, VOSK_WITH_GRAMMER,
+// DISABLE_MDNS, NO8084, JDOCS_PINGER_ENABLED, SDK_ENABLED, PORT80_ENABLED)
+// say right now, for continuity with existing compose.yaml deployments --
+// but only once per install, guarded by AdvancedMigrated, matching how
+// every other setting in this struct only ever seeds from the
+// environment on a genuinely fresh config. After this runs, the
+// dashboard is authoritative for these; the env vars are never consulted
+// again.
+func migrateAdvancedSettings() {
+	if APIConfig.AdvancedMigrated {
+		return
+	}
+	APIConfig.Advanced.VoskThermalEnabled = os.Getenv("VOSK_THERMAL_ENABLED") != "false"
+	APIConfig.Advanced.VoskWithGrammar = os.Getenv("VOSK_WITH_GRAMMER") == "true"
+	APIConfig.Advanced.DisableMDNS = os.Getenv("DISABLE_MDNS") == "true"
+	// NO8084 is inverted-sense (true means disabled) and predates the
+	// _ENABLED convention used everywhere else here.
+	APIConfig.Advanced.Port8084Enabled = os.Getenv("NO8084") != "true"
+	APIConfig.Advanced.JdocsPingerEnabled = os.Getenv("JDOCS_PINGER_ENABLED") != "false"
+	APIConfig.Advanced.SDKEnabled = os.Getenv("SDK_ENABLED") != "false"
+	APIConfig.Advanced.Port80Enabled = os.Getenv("PORT80_ENABLED") != "false"
+	APIConfig.AdvancedMigrated = true
 }
 
 func WriteSTT() {
@@ -214,6 +260,8 @@ func ReadConfig() {
 			logger.Println("Setting Together model to Llama3")
 			APIConfig.Knowledge.Model = "meta-llama/Llama-3-70b-chat-hf"
 		}
+
+		migrateAdvancedSettings()
 
 		writeConfig()
 		logger.Println("API config successfully read")

@@ -67,6 +67,10 @@ func apiHandler(w http.ResponseWriter, r *http.Request) {
 		handleGetVersionInfo(w)
 	case "generate_certs":
 		handleGenerateCerts(w)
+	case "get_advanced_settings":
+		handleGetAdvancedSettings(w)
+	case "set_advanced_settings":
+		handleSetAdvancedSettings(w, r)
 	case "is_api_v3":
 		fmt.Fprintf(w, "it is!")
 	default:
@@ -440,6 +444,33 @@ func handleGenerateCerts(w http.ResponseWriter) {
 		return
 	}
 	fmt.Fprint(w, "done")
+}
+
+func handleGetAdvancedSettings(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(vars.APIConfig.Advanced)
+}
+
+// handleSetAdvancedSettings persists the deployment-behavior toggles that
+// used to be env-var-only (VOSK_THERMAL_ENABLED, VOSK_WITH_GRAMMER,
+// DISABLE_MDNS, NO8084, JDOCS_PINGER_ENABLED, SDK_ENABLED,
+// PORT80_ENABLED) -- see vars.apiConfig.Advanced. VoskThermalEnabled/
+// VoskWithGrammar/DisableMDNS/JdocsPingerEnabled are read live at the
+// point of use and take effect immediately; SDKEnabled/Port80Enabled/
+// Port8084Enabled decide which TCP listeners get bound at startup, so
+// changing those needs a container restart to actually take effect --
+// this only persists the new value for that next restart to pick up.
+func handleSetAdvancedSettings(w http.ResponseWriter, r *http.Request) {
+	if err := json.NewDecoder(r.Body).Decode(&vars.APIConfig.Advanced); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	vars.APIConfig.AdvancedMigrated = true
+	if err := vars.WriteConfigToDisk(); err != nil {
+		http.Error(w, "settings applied but failed to save to disk: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	fmt.Fprint(w, "Changes successfully applied. SDK/port listener changes need a container restart to take effect.")
 }
 
 func saveCustomIntents() {

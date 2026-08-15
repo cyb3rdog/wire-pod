@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -89,8 +88,8 @@ func pingJdocs(target string) {
 }
 
 func InitJdocsPinger() {
-	if os.Getenv("JDOCS_PINGER_ENABLED") == "false" {
-		logger.Println("Jdocs pinger is disabled (JDOCS_PINGER_ENABLED=false)")
+	if !vars.APIConfig.Advanced.JdocsPingerEnabled {
+		logger.Println("Jdocs pinger is disabled (Advanced settings: JdocsPingerEnabled=false)")
 		PingerEnabled = false
 		return
 	}
@@ -196,7 +195,7 @@ var RunningMDNS bool
 // automatic trigger from connCheck and the manual one from the
 // /ok?runMDNS=true query param go through here.
 func RunMDNS(botIP string) {
-	if os.Getenv("DISABLE_MDNS") == "true" {
+	if vars.APIConfig.Advanced.DisableMDNS {
 		return
 	}
 	for _, ip := range MDNSAlreadyRun {

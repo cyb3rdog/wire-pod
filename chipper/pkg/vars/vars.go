@@ -68,10 +68,11 @@ var WebPort string = "8080"
 // connectivity check every paired robot relies on, SDK or not) is
 // registered on the shared http.DefaultServeMux regardless, and so
 // stays reachable via :8080 even with both port 80 and the SDK server
-// off. No dashboard setting backs this; like DISABLE_MDNS/
-// VOSK_THERMAL_ENABLED it's read live, so it applies on every restart.
+// off. Backed by APIConfig.Advanced.SDKEnabled -- a dashboard/apiConfig
+// setting like everything else, not an env var read live (see
+// migrateAdvancedSettings for the one-time env-var seed on upgrade).
 func SDKEnabled() bool {
-	return os.Getenv("SDK_ENABLED") != "false"
+	return APIConfig.Advanced.SDKEnabled
 }
 
 // Port80Enabled reports whether wire-pod should bind its own :80 listener
@@ -84,21 +85,20 @@ func SDKEnabled() bool {
 // at all -- e.g. only forwarding :8080 through a reverse proxy -- and
 // don't need a paired robot's own connectivity check-in (which relies on
 // port 80 specifically; server_config.json's "check" field has no way to
-// point it at :8080 instead) to keep working. No dashboard setting backs
-// this either; applies live on every restart.
+// point it at :8080 instead) to keep working. Backed by
+// APIConfig.Advanced.Port80Enabled.
 func Port80Enabled() bool {
-	return os.Getenv("PORT80_ENABLED") != "false"
+	return APIConfig.Advanced.Port80Enabled
 }
 
 // Port8084Enabled reports whether wire-pod should also serve its legacy
 // TLS listener on :8084 (kept for 2.0.1-era robot firmware compatibility;
-// see StartChipper). Deliberately left keyed on NO8084 rather than
-// migrated to the _ENABLED convention the other toggles here use: NO8084
-// predates this branch, real deployments already set it, and its
-// inverted sense (true means "disabled") only matters at this one call
-// site -- not worth a second env var and a compat shim to rename.
+// see StartChipper). Backed by APIConfig.Advanced.Port8084Enabled --
+// migrateAdvancedSettings seeds it from the old, inverted-sense NO8084
+// env var on upgrade, so existing deployments keep their current
+// behavior once, then this is dashboard-authoritative going forward.
 func Port8084Enabled() bool {
-	return os.Getenv("NO8084") != "true"
+	return APIConfig.Advanced.Port8084Enabled
 }
 
 // /home/name/.anki_vector/

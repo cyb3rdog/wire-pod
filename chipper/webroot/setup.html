@@ -41,6 +41,10 @@
           <a href="#" onclick="showSTTService(); return false;"><i class="fa-solid fa-microphone" id="icon-STTService"
               name="icon"></i><br />STT Service</a>
         </div>
+        <div class="main-nav-child">
+          <a href="#" onclick="showAdvanced(); return false;"><i class="fa-solid fa-sliders" id="icon-Advanced"
+              name="icon"></i><br />Advanced</a>
+        </div>
         <!--<div class="main-nav-child"><a href="#" onclick="showRestart(); return false;"><i class="fa solid fa-arrow-rotate-right" id="icon-Restart" name="icon"></i><br/>Restart Wire-Pod</a></div> -->
       </div>
       <hr />
@@ -280,6 +284,52 @@
           <hr />
         </div>
       </div>
+
+      <div id="section-advanced" style="display: none">
+        <h3>Advanced Settings</h3>
+        <hr class="small-hr">
+        <div>
+          <p>Deployment-behavior toggles for this wire-pod instance. The first four take effect immediately; the
+            last three (SDK/port listeners) need a container restart to actually rebind.</p>
+          <hr class="small-hr">
+          <label>
+            <input type="checkbox" id="voskThermalEnabled" />
+            Vosk thermal management <small class="desc">(temperature-based throttling/idle-sleep tuned for slow
+              hardware like the RPi Zero 2W -- pure overhead on a normal server or NAS)</small>
+          </label><br />
+          <label>
+            <input type="checkbox" id="voskWithGrammar" />
+            Vosk grammar optimizations
+          </label><br />
+          <label>
+            <input type="checkbox" id="disableMDNS" />
+            Disable mDNS <small class="desc">(stops all of wire-pod's mDNS broadcasting/discovery traffic)</small>
+          </label><br />
+          <label>
+            <input type="checkbox" id="jdocsPingerEnabled" />
+            Jdocs pinger <small class="desc">(periodic background sync with paired robots)</small>
+          </label><br />
+          <hr class="small-hr">
+          <label>
+            <input type="checkbox" id="sdkEnabled" />
+            SDK app server <small class="desc">(bot remote-control features -- eye color, volume, camera streaming
+              -- and the "Bot Settings" page; the core voice pipeline works regardless)</small>
+          </label><br />
+          <label>
+            <input type="checkbox" id="port80Enabled" />
+            Bind port 80 <small class="desc">(a paired robot's own connectivity check-in relies on this
+              specifically; turn off only if you're forwarding :8080 instead)</small>
+          </label><br />
+          <label>
+            <input type="checkbox" id="port8084Enabled" />
+            Legacy :8084 TLS listener <small class="desc">(2.0.1-era robot firmware compatibility)</small>
+          </label><br />
+          <hr class="small-hr">
+          <button onclick="sendAdvancedSettings()">Apply Advanced Settings</button>
+          <div id="advancedSettingsStatus"></div>
+          <hr />
+        </div>
+      </div>
     </div>
   </div>
 </body>
@@ -290,6 +340,7 @@
   updateWeatherAPI();
   updateKGAPI();
   updateSTTServiceInfo();
+  updateAdvancedSettings();
 </script>
 
 </html>

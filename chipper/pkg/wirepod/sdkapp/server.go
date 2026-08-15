@@ -9,7 +9,6 @@ import (
 	"image/jpeg"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -525,23 +524,23 @@ func SdkapiHandler(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/api-sdk/trigger_wake_word":
 		robotIP := strings.Split(robotObj.Target, ":")[0]
 		consoleURL := fmt.Sprintf("http://%s:8889/consolevarset?key=FakeButtonPressType&value=singlePressDetected", robotIP)
-		
+
 		client := &http.Client{
 			Timeout: 10 * time.Second,
 		}
-		
+
 		resp, err := client.Get(consoleURL)
 		if err != nil {
 			http.Error(w, "Failed to trigger wake word: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 		defer resp.Body.Close()
-		
+
 		if resp.StatusCode != http.StatusOK {
 			http.Error(w, "Consolevars returned error", resp.StatusCode)
 			return
 		}
-		
+
 		fmt.Fprint(w, "success")
 		return
 	}
@@ -623,7 +622,7 @@ func BeginServer() {
 	scripting.RegisterScriptingAPI()
 
 	if vars.SDKEnabled() {
-		if os.Getenv("JDOCS_PINGER_ENABLED") == "false" {
+		if !vars.APIConfig.Advanced.JdocsPingerEnabled {
 			PingerEnabled = false
 			logger.Println("Jdocs pinger has been disabled")
 		}
