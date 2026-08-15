@@ -2,10 +2,33 @@ package vars
 
 import (
 	"fmt"
+	"os"
 	"sync"
 	"testing"
 	"time"
 )
+
+// TestSDKEnabledDefaultsOnAndRespectsFalse guards the SDK app server's
+// off switch: unset (or any value other than "false") must default to
+// enabled, matching existing behavior for anyone who never set this var.
+func TestSDKEnabledDefaultsOnAndRespectsFalse(t *testing.T) {
+	t.Cleanup(func() { os.Unsetenv("SDK_ENABLED") })
+
+	os.Unsetenv("SDK_ENABLED")
+	if !SDKEnabled() {
+		t.Error("SDKEnabled() = false with the env var unset, want true (default on)")
+	}
+
+	os.Setenv("SDK_ENABLED", "true")
+	if !SDKEnabled() {
+		t.Error("SDKEnabled() = false with SDK_ENABLED=true, want true")
+	}
+
+	os.Setenv("SDK_ENABLED", "false")
+	if SDKEnabled() {
+		t.Error("SDKEnabled() = true with SDK_ENABLED=false, want false")
+	}
+}
 
 // TestDeleteDataNoDeadlock guards against a regression of the
 // DeleteData -> WriteJdocs reentrant-lock deadlock: DeleteData held

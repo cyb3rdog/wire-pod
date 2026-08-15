@@ -58,6 +58,17 @@ services:
       WIREPOD_DISABLE_MDNS: ${WIREPOD_DISABLE_MDNS:-false}
       WIREPOD_NO8084: ${WIREPOD_NO8084:-false}
       WIREPOD_JDOCS_PINGER_ENABLED: ${WIREPOD_JDOCS_PINGER_ENABLED:-true}
+      # Bot remote-control features (eye color, volume, Alexa opt-in, camera
+      # streaming), the jdocs pinger, and its mDNS discovery -- all bolted
+      # onto the core voice pipeline (STT/intents/knowledge-graph, gRPC on
+      # :443), which never imports this package and is unaffected by
+      # disabling it. Set to "false" to run wire-pod as a voice-only cloud
+      # server (e.g. behind a reverse proxy exposing only :443): no port 80
+      # listener gets bound at all, and the "Bot Settings" dashboard page
+      # hides itself accordingly. Port 80 below stays published either way
+      # so re-enabling this later doesn't need a container recreate; it's
+      # simply unused while disabled.
+      WIREPOD_SDK_ENABLED: ${WIREPOD_SDK_ENABLED:-true}
     ports:
       - "80:80"
       - "443:443"

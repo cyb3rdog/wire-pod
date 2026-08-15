@@ -30,7 +30,7 @@
           <a href="setup.html"><i class="fa-solid fa-gear"></i><br />Server Settings</a>
         </div>
         <!--Bot Settings-->
-        <div class="main-nav-child">
+        <div class="main-nav-child" id="nav-bot-settings">
           <a href="/sdkapp"><i class="fa solid fa-toolbox"></i><br />Bot Settings</a>
         </div>
         <!--Bot Setup-->
@@ -222,7 +222,22 @@
   updateIntentSelection("editSelect");
   updateIntentSelection("deleteSelect");
   createIntentSelect("intentAddSelect");
-  processBotStats();
+
+  // Bot Settings and the battery/connection widget both depend on the SDK
+  // app server (port 80); hide them instead of letting them fail against
+  // a disabled one (SDK_ENABLED=false has no dashboard toggle -- see
+  // vars.SDKEnabled).
+  fetch("/api/auth/status", { credentials: "same-origin" })
+    .then((res) => res.json())
+    .then((status) => {
+      if (status.sdkEnabled) {
+        processBotStats();
+      } else {
+        document.getElementById("nav-bot-settings").style.display = "none";
+        document.getElementById("botStats").style.display = "none";
+      }
+    })
+    .catch(() => processBotStats());
 </script>
 
 </html>

@@ -57,6 +57,20 @@ var (
 
 var WebPort string = "8080"
 
+// SDKEnabled reports whether wire-pod's SDK app server (port 80: bot
+// remote-control features -- eye color, volume, Alexa opt-in, camera
+// streaming -- plus the jdocs pinger and its own connCheck-triggered mDNS
+// discovery) should start at all. It's independent of the core voice
+// pipeline (the chipper/jdocs/token gRPC services on :443, STT, intent
+// matching, and the knowledge-graph fallback never import this package),
+// so disabling it -- e.g. to run wire-pod as a voice-only cloud server
+// behind a reverse proxy exposing just :443 -- doesn't affect any of
+// that. No dashboard setting backs this; like DISABLE_MDNS/
+// VOSK_THERMAL_MANAGEMENT it's read live, so it applies on every restart.
+func SDKEnabled() bool {
+	return os.Getenv("SDK_ENABLED") != "false"
+}
+
 // /home/name/.anki_vector/
 var SDKIniPath string
 var BotJdocs []botjdoc

@@ -237,6 +237,10 @@ apply_env_overrides() {
     if [ -n "${WIREPOD_JDOCS_PINGER_ENABLED:-}" ]; then
         update_export "JDOCS_PINGER_ENABLED" "${WIREPOD_JDOCS_PINGER_ENABLED}" "${source_file}"
     fi
+
+    if [ -n "${WIREPOD_SDK_ENABLED:-}" ]; then
+        update_export "SDK_ENABLED" "${WIREPOD_SDK_ENABLED}" "${source_file}"
+    fi
 }
 
 persist_directories

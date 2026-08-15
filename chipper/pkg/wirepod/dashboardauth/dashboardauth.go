@@ -249,6 +249,12 @@ type statusResponse struct {
 	PastInitialSetup bool `json:"pastInitialSetup"`
 	Initialized      bool `json:"initialized"`
 	Authenticated    bool `json:"authenticated"`
+	// SdkEnabled mirrors vars.SDKEnabled(), so the dashboard can hide
+	// bot-remote-control UI (the "Bot Settings" page, battery/connection
+	// widgets) that would otherwise just fail against a disabled SDK
+	// server. Fetched from the same status call the dashboard already
+	// makes on every page load, rather than a dedicated endpoint.
+	SdkEnabled bool `json:"sdkEnabled"`
 }
 
 func handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -257,6 +263,7 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		PastInitialSetup: vars.APIConfig.PastInitialSetup,
 		Initialized:      passwordSet(),
 		Authenticated:    validSession(r),
+		SdkEnabled:       vars.SDKEnabled(),
 	})
 }
 
