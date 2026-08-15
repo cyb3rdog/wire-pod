@@ -98,12 +98,60 @@ func TestSetKGAPIReportsDiskWriteFailure(t *testing.T) {
 	// unconditionally, independent of process privilege.
 	vars.ApiConfigPath = "/this-directory-does-not-exist-xyz/apiConfig.json"
 
-	body := `{"enable": true, "provider": "custom", "endpoint": "https://my-llm.example.com/v1"}`
+	// A valid, passes-validation body -- this test is specifically about
+	// the disk write failing, not about request validation (see
+	// TestSetKGAPIRejectsInvalidRequests for that).
+	body := `{"enable": true, "provider": "custom", "key": "sk-test-key", "endpoint": "https://my-llm.example.com/v1"}`
 	req := httptest.NewRequest("POST", "/api/set_kg_api", strings.NewReader(body))
 	rec := httptest.NewRecorder()
 	handleSetKGAPI(rec, req)
 
 	if rec.Code == 200 {
 		t.Fatalf("handleSetKGAPI returned 200 despite the disk write failing -- the caller has no way to know the setting won't survive a restart. Body: %s", rec.Body.String())
+	}
+}
+
+// TestSetKGAPIRejectsInvalidRequests guards the validation gap this
+// handler used to have: it decoded straight into live config with no
+// checks at all, unlike every other settings handler in this file.
+func TestSetKGAPIRejectsInvalidRequests(t *testing.T) {
+	dir := t.TempDir()
+	origPath := vars.ApiConfigPath
+	origKnowledge := vars.APIConfig.Knowledge
+	t.Cleanup(func() {
+		vars.ApiConfigPath = origPath
+		vars.APIConfig.Knowledge = origKnowledge
+	})
+	vars.ApiConfigPath = filepath.Join(dir, "apiConfig.json")
+
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"unknown provider", `{"enable": true, "provider": "not-a-real-provider", "key": "sk-test-key"}`},
+		{"empty provider while enabled", `{"enable": true, "provider": "", "key": "sk-test-key"}`},
+		{"missing key while enabled", `{"enable": true, "provider": "openai", "key": ""}`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			vars.APIConfig.Knowledge = origKnowledge
+			req := httptest.NewRequest("POST", "/api/set_kg_api", strings.NewReader(c.body))
+			rec := httptest.NewRecorder()
+			handleSetKGAPI(rec, req)
+			if rec.Code != 400 {
+				t.Fatalf("expected 400 for %s, got %d: %s", c.name, rec.Code, rec.Body.String())
+			}
+			if vars.APIConfig.Knowledge.Enable {
+				t.Fatalf("%s: live config was mutated despite the request being rejected", c.name)
+			}
+		})
+	}
+
+	// Disabling should never require a provider/key.
+	req := httptest.NewRequest("POST", "/api/set_kg_api", strings.NewReader(`{"enable": false, "provider": "", "key": ""}`))
+	rec := httptest.NewRecorder()
+	handleSetKGAPI(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("disabling knowledge graph should not require validation, got %d: %s", rec.Code, rec.Body.String())
 	}
 }

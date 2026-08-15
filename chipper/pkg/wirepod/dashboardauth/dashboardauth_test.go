@@ -82,6 +82,57 @@ func TestSetupThenLoginFlow(t *testing.T) {
 	}
 }
 
+// TestSetupReportsDiskWriteFailure ensures a first-time password set that
+// can't reach disk tells the caller instead of claiming success -- a
+// silent failure here is worse than most settings, since the user would
+// believe the dashboard is now password-protected when the password
+// never actually persisted.
+func TestSetupReportsDiskWriteFailure(t *testing.T) {
+	resetPassword(t)
+	vars.ApiConfigPath = t.TempDir() + "/this-directory-does-not-exist-xyz/apiConfig.json"
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/setup", strings.NewReader(`{"password":"correct-horse","confirm":"correct-horse"}`))
+	req.Header.Set("Origin", "http://"+req.Host)
+	handleSetup(rec, req)
+
+	if rec.Code == http.StatusOK {
+		t.Fatalf("expected a non-200 status when the config can't be written, got 200: %s", rec.Body.String())
+	}
+}
+
+// TestPasswordChangeReportsDiskWriteFailure is the same check for the
+// password-change path, which goes through rotateSessionToken instead of
+// a direct WriteConfigToDisk call.
+func TestPasswordChangeReportsDiskWriteFailure(t *testing.T) {
+	resetPassword(t)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/setup", strings.NewReader(`{"password":"correct-horse","confirm":"correct-horse"}`))
+	req.Header.Set("Origin", "http://"+req.Host)
+	handleSetup(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("initial setup: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	cookies := rec.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("expected a session cookie after setup, got %+v", cookies)
+	}
+
+	// Now make persistence impossible and attempt a change.
+	vars.ApiConfigPath = t.TempDir() + "/this-directory-does-not-exist-xyz/apiConfig.json"
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/auth/setup", strings.NewReader(`{"password":"new-password","confirm":"new-password"}`))
+	req.Header.Set("Origin", "http://"+req.Host)
+	req.AddCookie(cookies[0])
+	handleSetup(rec, req)
+
+	if rec.Code == http.StatusOK {
+		t.Fatalf("expected a non-200 status when the config can't be written, got 200: %s", rec.Body.String())
+	}
+}
+
 func TestWrapBlocksProtectedPathsWithoutSession(t *testing.T) {
 	resetPassword(t)
 	vars.APIConfig.Dashboard.PasswordHash = "$2a$10$abcdefghijklmnopqrstuv" // any non-empty hash

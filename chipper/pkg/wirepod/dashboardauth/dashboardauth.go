@@ -61,19 +61,27 @@ func getSessionToken() string {
 	}
 	sessionToken = mustRandomToken()
 	vars.APIConfig.Dashboard.SessionSecret = sessionToken
-	vars.WriteConfigToDisk()
+	// Not reported anywhere HTTP-facing: this runs on the read path
+	// (validating/issuing a session cookie), not as a response to a
+	// discrete settings change a caller is waiting on. A failure here
+	// just means the in-memory token (already usable for the rest of
+	// this process's life) won't survive a restart -- logged so it's at
+	// least visible to whoever's running the server.
+	if err := vars.WriteConfigToDisk(); err != nil {
+		logger.Println("Failed to persist new dashboard session secret:", err)
+	}
 	return sessionToken
 }
 
 // rotateSessionToken issues and persists a fresh session secret,
 // invalidating every existing session cookie. Call this on a password
 // change, not on first-time setup (there's no prior session to protect).
-func rotateSessionToken() {
+func rotateSessionToken() error {
 	sessionMu.Lock()
 	defer sessionMu.Unlock()
 	sessionToken = mustRandomToken()
 	vars.APIConfig.Dashboard.SessionSecret = sessionToken
-	vars.WriteConfigToDisk()
+	return vars.WriteConfigToDisk()
 }
 
 func passwordSet() bool {
@@ -318,9 +326,18 @@ func handleSetup(w http.ResponseWriter, r *http.Request) {
 		// with the new value so the browser making the change stays
 		// logged in. rotateSessionToken persists the config too, so
 		// there's no separate WriteConfigToDisk call on this branch.
-		rotateSessionToken()
-	} else {
-		vars.WriteConfigToDisk()
+		if err := rotateSessionToken(); err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "password changed but failed to save to disk (will revert on restart): "+err.Error())
+			return
+		}
+	} else if err := vars.WriteConfigToDisk(); err != nil {
+		// This is the first-ever password (no prior state to protect),
+		// so unlike the change case above there's nothing to roll back --
+		// but the caller still needs to know it won't survive a restart
+		// instead of believing the dashboard is now protected when it
+		// isn't.
+		writeJSONError(w, http.StatusInternalServerError, "password set but failed to save to disk (will revert on restart): "+err.Error())
+		return
 	}
 
 	setSessionCookie(w, r)

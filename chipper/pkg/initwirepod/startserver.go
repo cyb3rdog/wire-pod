@@ -168,7 +168,9 @@ func ensureCertForHostOverride() {
 		return
 	}
 	botsetup.CreateServerConfig()
-	vars.WriteConfigToDisk()
+	if err := vars.WriteConfigToDisk(); err != nil {
+		logger.Println("failed to persist HOST_OVERRIDE cert generation:", err)
+	}
 }
 
 func StartFromProgramInit(sttInitFunc func() error, sttHandlerFunc interface{}, voiceProcessorName string) {

@@ -475,7 +475,9 @@ func DoGetImage(msgs []openai.ChatCompletionMessage, param string, robot *vector
 	case "together":
 		if vars.APIConfig.Knowledge.Model == "" {
 			vars.APIConfig.Knowledge.Model = "meta-llama/Llama-2-70b-chat-hf"
-			vars.WriteConfigToDisk()
+			if err := vars.WriteConfigToDisk(); err != nil {
+				logger.Println("Failed to persist default Together model:", err)
+			}
 		}
 		conf := openai.DefaultConfig(vars.APIConfig.Knowledge.Key)
 		conf.BaseURL = "https://api.together.xyz/v1"

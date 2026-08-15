@@ -298,7 +298,9 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 	case "together":
 		if vars.APIConfig.Knowledge.Model == "" {
 			vars.APIConfig.Knowledge.Model = "meta-llama/Llama-3-70b-chat-hf"
-			vars.WriteConfigToDisk()
+			if err := vars.WriteConfigToDisk(); err != nil {
+				logger.Println("Failed to persist default Together model:", err)
+			}
 		}
 		llmEndpoint = "https://api.together.xyz/v1"
 		conf := openai.DefaultConfig(vars.APIConfig.Knowledge.Key)

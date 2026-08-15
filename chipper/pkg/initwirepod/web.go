@@ -80,42 +80,29 @@ func ChipperHTTPApi(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprint(w, "error: must have port")
 			return
 		}
-		_, err := strconv.Atoi(port)
-		if err != nil {
+		if _, err := strconv.Atoi(port); err != nil {
 			fmt.Fprint(w, "error: port is invalid")
 			return
 		}
-		vars.APIConfig.Server.EPConfig = false
-		vars.APIConfig.Server.Port = port
-		vars.APIConfig.Server.HostOverride = ""
-		err = botsetup.CreateCertCombo()
-		botsetup.CreateServerConfig()
-		if err != nil {
+		// IP mode needs a cert whose SAN actually matches the address the
+		// robot will dial, so it's regenerated here.
+		if err := applyServerConfig(false, port, "", true); err != nil {
 			logger.Println(err)
 			fmt.Fprint(w, "error: "+err.Error())
 			return
 		}
-		vars.APIConfig.PastInitialSetup = true
-		if err := vars.WriteConfigToDisk(); err != nil {
-			logger.Println(err)
-			fmt.Fprint(w, "error: applied but failed to save to disk (will revert on restart): "+err.Error())
-			return
-		}
-		RestartServer()
 		fmt.Fprint(w, "done")
 		return
 	case r.URL.Path == "/api-chipper/use_ep":
-		vars.APIConfig.Server.EPConfig = true
-		vars.APIConfig.Server.Port = "443"
-		vars.APIConfig.Server.HostOverride = ""
-		vars.APIConfig.PastInitialSetup = true
-		botsetup.CreateServerConfig()
-		if err := vars.WriteConfigToDisk(); err != nil {
+		// Escape Pod mode is resolved by the robot via mDNS against the
+		// hostname itself, not a specific IP/host baked into the cert's
+		// SAN, so -- unlike the other two modes -- this deliberately does
+		// not regenerate the cert.
+		if err := applyServerConfig(true, "443", "", false); err != nil {
 			logger.Println(err)
-			fmt.Fprint(w, "error: applied but failed to save to disk (will revert on restart): "+err.Error())
+			fmt.Fprint(w, "error: "+err.Error())
 			return
 		}
-		RestartServer()
 		fmt.Fprint(w, "done")
 		return
 	case r.URL.Path == "/api-chipper/use_custom":
@@ -143,24 +130,40 @@ func ChipperHTTPApi(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprint(w, "error: port is invalid")
 			return
 		}
-		vars.APIConfig.Server.EPConfig = false
-		vars.APIConfig.Server.Port = port
-		vars.APIConfig.Server.HostOverride = host
-		err := botsetup.CreateCertCombo()
-		botsetup.CreateServerConfig()
-		if err != nil {
+		if err := applyServerConfig(false, port, host, true); err != nil {
 			logger.Println(err)
 			fmt.Fprint(w, "error: "+err.Error())
 			return
 		}
-		vars.APIConfig.PastInitialSetup = true
-		if err := vars.WriteConfigToDisk(); err != nil {
-			logger.Println(err)
-			fmt.Fprint(w, "error: applied but failed to save to disk (will revert on restart): "+err.Error())
-			return
-		}
-		RestartServer()
 		fmt.Fprint(w, "done")
 		return
 	}
+}
+
+// applyServerConfig persists one connection-method choice and everything
+// that always follows from it -- optionally regenerating the TLS
+// cert/server_config.json pair, marking the wizard complete, persisting
+// to disk, and restarting the server on the new settings. Previously
+// reimplemented three times, nearly verbatim, across the use_ip/use_ep/
+// use_custom cases above.
+func applyServerConfig(epConfig bool, port, hostOverride string, regenerateCert bool) error {
+	vars.APIConfig.Server.EPConfig = epConfig
+	vars.APIConfig.Server.Port = port
+	vars.APIConfig.Server.HostOverride = hostOverride
+	if regenerateCert {
+		if err := botsetup.CreateCertCombo(); err != nil {
+			return err
+		}
+	}
+	botsetup.CreateServerConfig()
+	// Choosing a connection method is the one and only step left in the
+	// wizard (STT/knowledge-graph/weather are all Server Settings-only,
+	// configured after setup, never here) -- so this is the single place
+	// setup is considered complete.
+	vars.APIConfig.PastInitialSetup = true
+	if err := vars.WriteConfigToDisk(); err != nil {
+		return fmt.Errorf("applied but failed to save to disk (will revert on restart): %w", err)
+	}
+	RestartServer()
+	return nil
 }

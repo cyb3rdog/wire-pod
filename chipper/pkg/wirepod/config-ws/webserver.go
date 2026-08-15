@@ -208,11 +208,30 @@ func handleGetWeatherAPI(w http.ResponseWriter) {
 }
 
 func handleSetKGAPI(w http.ResponseWriter, r *http.Request) {
-	if err := json.NewDecoder(r.Body).Decode(&vars.APIConfig.Knowledge); err != nil {
-		fmt.Println(err)
+	// Decoded into a copy first, not directly into vars.APIConfig.Knowledge,
+	// so an invalid provider/missing key can be rejected below without
+	// having already overwritten live config with a body that turns out
+	// to be bad -- every other settings handler in this file validates
+	// before mutating; this one didn't.
+	newConfig := vars.APIConfig.Knowledge
+	if err := json.NewDecoder(r.Body).Decode(&newConfig); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
+	if newConfig.Enable {
+		switch newConfig.Provider {
+		case "openai", "houndify", "together", "custom":
+		default:
+			http.Error(w, "provider must be one of: openai, houndify, together, custom", http.StatusBadRequest)
+			return
+		}
+		if strings.TrimSpace(newConfig.Key) == "" {
+			http.Error(w, "key is required when knowledge graph is enabled", http.StatusBadRequest)
+			return
+		}
+	}
+	newConfig.Key = strings.TrimSpace(newConfig.Key)
+	vars.APIConfig.Knowledge = newConfig
 	if err := vars.WriteConfigToDisk(); err != nil {
 		// Applied in memory (so it works until the next restart) but not
 		// actually persisted -- tell the caller instead of claiming
@@ -257,7 +276,12 @@ func handleSetSTTInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	vars.APIConfig.STT.Language = request.Language
-	vars.APIConfig.PastInitialSetup = true
+	// Not touching PastInitialSetup here: this handler is also the one
+	// the wizard itself calls (initial.js -- see applyServerConfig in
+	// initwirepod/web.go for the wizard's actual completion point), and
+	// setting it early meant a restart between that call and the
+	// connection-method step it precedes would already read as "setup
+	// complete" with no connection method chosen at all.
 	writeErr := vars.WriteConfigToDisk()
 	processreqs.ReloadVosk()
 	logger.Println("Reloaded voice processor successfully")
@@ -299,7 +323,8 @@ func handleSetSTTService(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "service must be vosk or whisper", http.StatusBadRequest)
 		return
 	}
-	vars.APIConfig.PastInitialSetup = true
+	// See handleSetSTTInfo above: PastInitialSetup is set in exactly one
+	// place (the wizard's connection-method step), not here.
 	writeErr := vars.WriteConfigToDisk()
 	processreqs.ReloadVosk()
 	logger.Println("Reloaded voice processor successfully")

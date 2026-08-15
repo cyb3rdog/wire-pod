@@ -120,23 +120,35 @@ link_file_with_default() {
     ln -sfn "${dest_path}" "${src_path}"
 }
 
+# Every entry here shows up as a real directory/file under the host's
+# ./data the moment the container first boots, whether or not it's ever
+# actually used -- so this list is deliberately limited to paths the
+# shipped image's Go code (cmd/vosk, the only binary dockerfile builds)
+# genuinely reads or writes at runtime. `stt` and `whisper.cpp` back the
+# coqui and whisper.cpp STT backends respectively, neither of which
+# cmd/vosk's dispatcher (pkg/wirepod/stt/dispatch) links in -- they only
+# matter for a manually-built cmd/coqui or cmd/experimental/whisper.cpp,
+# which don't use this entrypoint at all. Audited against every path
+# constant in pkg/vars for a match.
 persist_directories() {
     link_dir certs
-    link_dir stt
     link_dir vosk
-    link_dir whisper.cpp
     link_dir vector-cloud/build
     link_dir chipper/jdocs
     link_dir chipper/plugins
     link_dir chipper/session-certs
 }
 
+# botConfig.json and useepod are never read or written by any Go code
+# path reachable from cmd/vosk -- grepping the whole of pkg/ and cmd/
+# turns up zero references to either name. They're gone from here
+# rather than kept "just in case": an unused file that shows up in every
+# user's ./data on first boot is exactly the kind of scaffolding bloat
+# that makes the data directory confusing to look at, and there's
+# nothing to migrate since nothing was ever populating them.
 persist_files() {
     link_file chipper/apiConfig.json
-    link_file chipper/botConfig.json
     link_file chipper/customIntents.json
-    link_file chipper/pico.key
-    link_file chipper/useepod
     link_file_with_default chipper/source.sh "${DEFAULT_SOURCE}"
 }
 
@@ -167,8 +179,12 @@ apply_env_overrides() {
     fi
 
     if [ -n "${WIREPOD_PICOVOICE_APIKEY:-}" ]; then
+        # The leopard STT backend reads this straight from the
+        # PICOVOICE_APIKEY env var (see stt/leopard/Leopard.go) -- there's
+        # no code path that reads a pico.key file back, so writing one
+        # here used to just leave an unread plaintext key sitting in
+        # ./data for no reason.
         update_export "PICOVOICE_APIKEY" "${WIREPOD_PICOVOICE_APIKEY}" "${source_file}"
-        printf '%s\n' "${WIREPOD_PICOVOICE_APIKEY}" >"${DATA_ROOT}/chipper/pico.key"
     fi
 
     # Everything below this point (STT service/language/Whisper endpoint,
