@@ -48,33 +48,9 @@
           <hr />
         </div>
 
-        <div id="section-language" style="display: none">
-          <h3>Speech-to-Text Language</h3>
-          <hr class="small-hr">
-          <div class="center" id="languageStatus"></div>
-          <div id="languageSelectionDiv">
-            <select name="languageSelection" id="languageSelection">
-              <option value="en-US">English (US)</option>
-              <option value="it-IT">Italian (IT)</option>
-              <option value="es-ES">Spanish (ES)</option>
-              <option value="fr-FR">French (FR)</option>
-              <option value="de-DE">German (DE)</option>
-              <option value="pt-BR">Portuguese (BR)</option>
-              <option value="pl-PL">Polish (PL)</option>
-              <option value="tr-TR">Turkish (TR)</option>
-              <option value="ko-KR">Korean (KR)</option>
-              <option value="zh-CN">Chinese (CN)</option>
-              <option value="ru-RU">Russian (RU)</option>
-              <option value="nt-NL">Dutch (NL)</option>
-              <option value="uk-UA">Ukrainian (UA)</option>
-              <option value="vi-VN">VietNamese (VN)</option>
-            </select>
-          </div>
-          <hr />
-        </div>
-
-        <small class="desc">Weather and Knowledge Graph settings can be configured in the Server Settings page once
-          wire-pod is set up.</small>
+        <small class="desc">STT service/language, weather, and Knowledge Graph settings can all be configured in
+          the Server Settings page once wire-pod is set up. (A default English speech-to-text model downloads
+          automatically on first boot if the Vosk backend is selected.)</small>
         <hr />
 
         <button onclick="sendSetupInfo()">
@@ -88,8 +64,5 @@
 <script src="./js/main.js"></script>
 <script src="./js/initial.js"></script>
 <!-- <script src="./sdkapp/js/main.js"></script> -->
-<script>
-  checkLanguage();
-</script>
 
 </html>
