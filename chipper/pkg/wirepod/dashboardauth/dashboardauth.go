@@ -2,10 +2,12 @@
 // webserver and the Lua-scripting endpoint) behind a single admin password.
 //
 // On first visit, whoever gets there first sets the password; after that,
-// every admin/API request needs a valid session. The session is a random
-// token generated once per process start and compared via a cookie, not a
-// per-user session table -- restarting wire-pod signs everyone out, which
-// is an acceptable tradeoff for a single-admin local dashboard.
+// every admin/API request needs a valid session. The session is a single
+// shared secret (not a per-user session table) compared via a cookie,
+// persisted in APIConfig.Dashboard.SessionSecret so a login survives a
+// process restart. It's rotated on a password change, which invalidates
+// every existing session cookie -- including whichever browser made the
+// change, which is handed a fresh cookie in the same response.
 package dashboardauth
 
 import (
@@ -28,7 +30,10 @@ import (
 const cookieName = "wirepod_dashboard_auth"
 const cookieMaxAgeSeconds = 30 * 24 * 3600 // 30 days
 
-var sessionToken = mustRandomToken()
+var (
+	sessionMu    sync.Mutex
+	sessionToken string
+)
 
 func mustRandomToken() string {
 	buf := make([]byte, 32)
@@ -40,6 +45,37 @@ func mustRandomToken() string {
 	return base64.RawURLEncoding.EncodeToString(buf)
 }
 
+// getSessionToken returns the value used to sign the dashboard session
+// cookie. It loads APIConfig.Dashboard.SessionSecret on first use if one
+// was already persisted (a prior process's setup or rotation), or
+// generates and persists a new one otherwise.
+func getSessionToken() string {
+	sessionMu.Lock()
+	defer sessionMu.Unlock()
+	if sessionToken != "" {
+		return sessionToken
+	}
+	if vars.APIConfig.Dashboard.SessionSecret != "" {
+		sessionToken = vars.APIConfig.Dashboard.SessionSecret
+		return sessionToken
+	}
+	sessionToken = mustRandomToken()
+	vars.APIConfig.Dashboard.SessionSecret = sessionToken
+	vars.WriteConfigToDisk()
+	return sessionToken
+}
+
+// rotateSessionToken issues and persists a fresh session secret,
+// invalidating every existing session cookie. Call this on a password
+// change, not on first-time setup (there's no prior session to protect).
+func rotateSessionToken() {
+	sessionMu.Lock()
+	defer sessionMu.Unlock()
+	sessionToken = mustRandomToken()
+	vars.APIConfig.Dashboard.SessionSecret = sessionToken
+	vars.WriteConfigToDisk()
+}
+
 func passwordSet() bool {
 	return vars.APIConfig.Dashboard.PasswordHash != ""
 }
@@ -49,13 +85,13 @@ func validSession(r *http.Request) bool {
 	if err != nil {
 		return false
 	}
-	return subtle.ConstantTimeCompare([]byte(c.Value), []byte(sessionToken)) == 1
+	return subtle.ConstantTimeCompare([]byte(c.Value), []byte(getSessionToken())) == 1
 }
 
 func setSessionCookie(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName,
-		Value:    sessionToken,
+		Value:    getSessionToken(),
 		Path:     "/",
 		MaxAge:   cookieMaxAgeSeconds,
 		HttpOnly: true,
@@ -243,7 +279,8 @@ func handleSetup(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusForbidden, "cross-site setup request rejected")
 		return
 	}
-	if passwordSet() && !validSession(r) {
+	isChange := passwordSet()
+	if isChange && !validSession(r) {
 		writeJSONError(w, http.StatusUnauthorized, "must be logged in to change the password")
 		return
 	}
@@ -268,7 +305,16 @@ func handleSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	vars.APIConfig.Dashboard.PasswordHash = string(hash)
-	vars.WriteConfigToDisk()
+	if isChange {
+		// Invalidates every existing session cookie, including this
+		// request's own (if any) -- setSessionCookie below re-issues one
+		// with the new value so the browser making the change stays
+		// logged in. rotateSessionToken persists the config too, so
+		// there's no separate WriteConfigToDisk call on this branch.
+		rotateSessionToken()
+	} else {
+		vars.WriteConfigToDisk()
+	}
 
 	setSessionCookie(w, r)
 	w.Header().Set("Content-Type", "application/json")
@@ -321,6 +367,9 @@ func handleLogout(w http.ResponseWriter, r *http.Request) {
 // RegisterRoutes registers /api/auth/{status,setup,login,logout} on the
 // default mux. Call once during server startup.
 func RegisterRoutes() {
+	// Resolve (and, if this is the first time, persist) the session
+	// secret now rather than lazily on the first request.
+	getSessionToken()
 	http.HandleFunc("/api/auth/status", handleStatus)
 	http.HandleFunc("/api/auth/setup", handleSetup)
 	http.HandleFunc("/api/auth/login", handleLogin)

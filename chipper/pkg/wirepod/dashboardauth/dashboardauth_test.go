@@ -15,6 +15,10 @@ func resetPassword(t *testing.T) {
 	t.Helper()
 	vars.ApiConfigPath = t.TempDir() + "/apiConfig.json"
 	vars.APIConfig.Dashboard.PasswordHash = ""
+	vars.APIConfig.Dashboard.SessionSecret = ""
+	sessionMu.Lock()
+	sessionToken = ""
+	sessionMu.Unlock()
 }
 
 func TestSetupThenLoginFlow(t *testing.T) {
@@ -135,6 +139,77 @@ func TestWrapOpenBeforeInitialSetup(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Errorf("%s: expected 200 before initial setup, got %d", path, rec.Code)
 		}
+	}
+}
+
+// TestSessionSecretPersistsAcrossRestart guards against the original
+// per-process-random-token design (which signed everyone out on every
+// restart): a fresh package-level sessionToken (simulating a new
+// process) must still recover the same value from the persisted config.
+func TestSessionSecretPersistsAcrossRestart(t *testing.T) {
+	resetPassword(t)
+
+	first := getSessionToken()
+	if first == "" {
+		t.Fatal("expected a non-empty session token")
+	}
+	if vars.APIConfig.Dashboard.SessionSecret != first {
+		t.Fatalf("expected SessionSecret to be persisted as %q, got %q", first, vars.APIConfig.Dashboard.SessionSecret)
+	}
+
+	// Simulate a process restart: in-memory package state resets, but
+	// the persisted config (already loaded into vars.APIConfig, as if
+	// ReadConfig had just run) survives.
+	sessionMu.Lock()
+	sessionToken = ""
+	sessionMu.Unlock()
+
+	if second := getSessionToken(); second != first {
+		t.Fatalf("expected session token to survive a restart: got %q, want %q", second, first)
+	}
+}
+
+// TestPasswordChangeRotatesSession guards against a stolen/leaked cookie
+// remaining valid forever: changing the password must invalidate every
+// previously issued session, while still logging in the browser that made
+// the change via the freshly issued cookie.
+func TestPasswordChangeRotatesSession(t *testing.T) {
+	resetPassword(t)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/setup", strings.NewReader(`{"password":"correct-horse","confirm":"correct-horse"}`))
+	req.Header.Set("Origin", "http://"+req.Host)
+	handleSetup(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("initial setup: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	firstCookie := rec.Result().Cookies()[0]
+	oldToken := getSessionToken()
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/auth/setup", strings.NewReader(`{"password":"new-password-here","confirm":"new-password-here"}`))
+	req.Header.Set("Origin", "http://"+req.Host)
+	req.AddCookie(firstCookie)
+	handleSetup(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("password change: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	if newToken := getSessionToken(); newToken == oldToken {
+		t.Fatal("expected session token to rotate on password change")
+	}
+
+	oldReq := httptest.NewRequest(http.MethodGet, "/api/get_config", nil)
+	oldReq.AddCookie(firstCookie)
+	if validSession(oldReq) {
+		t.Fatal("expected the pre-change session cookie to be invalidated by the rotation")
+	}
+
+	newCookie := rec.Result().Cookies()[0]
+	newReq := httptest.NewRequest(http.MethodGet, "/api/get_config", nil)
+	newReq.AddCookie(newCookie)
+	if !validSession(newReq) {
+		t.Fatal("expected the freshly issued session cookie (from the change response) to validate")
 	}
 }
 
