@@ -115,6 +115,7 @@ var botJdocsMu sync.RWMutex // Protects BotJdocs
 var rememberedChatsMu sync.RWMutex
 var recurringInfoMu sync.RWMutex // Protects RecurringInfo
 var botInfoMu sync.RWMutex       // Protects BotInfo
+var customIntentsMu sync.RWMutex // Protects CustomIntents/CustomIntentsExist
 
 // here to prevent import cycle (localization restructure)
 var SttInitFunc func() error
@@ -393,6 +394,15 @@ func GetDownloadedVoskModels() {
 	}
 }
 
+// LoadCustomIntents runs once, synchronously, from Init before the HTTP
+// server accepts any request -- like ReadConfig (see vars/config.go), it
+// accesses CustomIntents/CustomIntentsExist directly without
+// customIntentsMu, safe only because of that single-threaded startup
+// guarantee. Every other caller, in or out of this package, must use
+// GetCustomIntents/UpdateCustomIntents/CustomIntentsCreated below:
+// CustomIntents used to be read and written directly from the dashboard's
+// add/edit/remove-intent HTTP handlers while concurrently read by every
+// robot's intent-matching request, with no synchronization at all.
 func LoadCustomIntents() {
 	jsonBytes, err := os.ReadFile(CustomIntentsPath)
 	if err == nil {
@@ -403,6 +413,58 @@ func LoadCustomIntents() {
 			logger.Println(intent.Name)
 		}
 	}
+}
+
+// GetCustomIntents returns a deep copy of the current custom intents,
+// safe to use freely without further synchronization: CustomIntent has
+// two slice fields (Utterances, ExecArgs), which a shallow copy of the
+// outer slice would leave sharing backing arrays with the live data --
+// both are copied explicitly here so the result is fully independent.
+func GetCustomIntents() []CustomIntent {
+	customIntentsMu.RLock()
+	defer customIntentsMu.RUnlock()
+	cp := make([]CustomIntent, len(CustomIntents))
+	for i, ci := range CustomIntents {
+		cp[i] = ci
+		cp[i].Utterances = append([]string(nil), ci.Utterances...)
+		cp[i].ExecArgs = append([]string(nil), ci.ExecArgs...)
+	}
+	return cp
+}
+
+// CustomIntentsCreated reports whether a custom intent has ever been
+// added (mirrors the package-level CustomIntentsExist flag, behind the
+// same lock as CustomIntents itself -- it's sticky by design, same as
+// before: removing every intent doesn't reset it, since it really means
+// "the custom intents file exists and can be read", not "is non-empty").
+func CustomIntentsCreated() bool {
+	customIntentsMu.RLock()
+	defer customIntentsMu.RUnlock()
+	return CustomIntentsExist
+}
+
+// UpdateCustomIntents runs fn with exclusive access to the live custom
+// intents slice, then persists the result -- the only sanctioned way to
+// mutate CustomIntents from outside this package. Previously this
+// persistence step was its own, independently maintained copy
+// (config-ws/webserver.go's saveCustomIntents) of the same
+// marshal-then-WriteFileAtomic pattern vars/config.go already has for
+// APIConfig; consolidated here instead of duplicated.
+func UpdateCustomIntents(fn func(intents *[]CustomIntent)) error {
+	customIntentsMu.Lock()
+	defer customIntentsMu.Unlock()
+	fn(&CustomIntents)
+	CustomIntentsExist = true
+	writeBytes, err := json.Marshal(CustomIntents)
+	if err != nil {
+		logger.Println("Error marshaling custom intents:", err)
+		return err
+	}
+	if err := fileutil.WriteFileAtomic(CustomIntentsPath, writeBytes, 0644); err != nil {
+		logger.Println("Error writing custom intents to", CustomIntentsPath, ":", err)
+		return err
+	}
+	return nil
 }
 
 func LoadIntents() ([]JsonIntent, error) {

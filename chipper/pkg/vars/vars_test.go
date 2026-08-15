@@ -273,3 +273,39 @@ func TestAPIConfigConcurrentAccess(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// TestCustomIntentsConcurrentAccess is the same pattern for CustomIntents:
+// dashboard add/edit/remove-intent HTTP handlers used to mutate it
+// directly while every robot's intent matching (ttr.customIntentHandler,
+// stt/vosk's grammar builder) read it concurrently, with no
+// synchronization. Run with -race.
+func TestCustomIntentsConcurrentAccess(t *testing.T) {
+	CustomIntentsPath = t.TempDir() + "/customIntents.json"
+	CustomIntents = nil
+
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(2)
+		n := i
+		go func() {
+			defer wg.Done()
+			UpdateCustomIntents(func(intents *[]CustomIntent) {
+				*intents = append(*intents, CustomIntent{
+					Name:       fmt.Sprintf("intent%d", n),
+					Utterances: []string{"hello", "hi"},
+				})
+			})
+		}()
+		go func() {
+			defer wg.Done()
+			for _, ci := range GetCustomIntents() {
+				_ = ci.Utterances
+			}
+		}()
+	}
+	wg.Wait()
+
+	if len(CustomIntents) != 50 {
+		t.Fatalf("expected 50 custom intents after concurrent updates, got %d", len(CustomIntents))
+	}
+}
