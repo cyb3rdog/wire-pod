@@ -218,8 +218,8 @@ apply_env_overrides() {
     # via os.Getenv at the point of use, every time, with no config-file
     # persistence -- so unlike everything above, they apply live on every
     # restart, not just the first one.
-    if [ -n "${WIREPOD_VOSK_THERMAL_MANAGEMENT:-}" ]; then
-        update_export "VOSK_THERMAL_MANAGEMENT" "${WIREPOD_VOSK_THERMAL_MANAGEMENT}" "${source_file}"
+    if [ -n "${WIREPOD_VOSK_THERMAL_ENABLED:-}" ]; then
+        update_export "VOSK_THERMAL_ENABLED" "${WIREPOD_VOSK_THERMAL_ENABLED}" "${source_file}"
     fi
 
     if [ -n "${WIREPOD_VOSK_WITH_GRAMMER:-}" ]; then
@@ -230,8 +230,8 @@ apply_env_overrides() {
         update_export "DISABLE_MDNS" "${WIREPOD_DISABLE_MDNS}" "${source_file}"
     fi
 
-    if [ -n "${WIREPOD_NO8084:-}" ]; then
-        update_export "NO8084" "${WIREPOD_NO8084}" "${source_file}"
+    if [ -n "${WIREPOD_PORT8084_ENABLED:-}" ]; then
+        update_export "PORT8084_ENABLED" "${WIREPOD_PORT8084_ENABLED}" "${source_file}"
     fi
 
     if [ -n "${WIREPOD_JDOCS_PINGER_ENABLED:-}" ]; then

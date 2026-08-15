@@ -76,9 +76,9 @@ var (
 // per-request throttle wait. It was tuned for the RPi Zero 2W and is pure
 // overhead (added latency, a background goroutine, /sys reads) on anything
 // else, e.g. Docker on a normal server or NAS. Defaults to on, preserving
-// existing behavior; set VOSK_THERMAL_MANAGEMENT=false to disable it
+// existing behavior; set VOSK_THERMAL_ENABLED=false to disable it
 // entirely.
-var thermalManagementEnabled = os.Getenv("VOSK_THERMAL_MANAGEMENT") != "false"
+var thermalManagementEnabled = os.Getenv("VOSK_THERMAL_ENABLED") != "false"
 
 // =============================================================================
 // THERMAL MANAGEMENT FUNCTIONS

@@ -69,7 +69,7 @@ var WebPort string = "8080"
 // registered on the shared http.DefaultServeMux regardless, and so
 // stays reachable via :8080 even with both port 80 and the SDK server
 // off. No dashboard setting backs this; like DISABLE_MDNS/
-// VOSK_THERMAL_MANAGEMENT it's read live, so it applies on every restart.
+// VOSK_THERMAL_ENABLED it's read live, so it applies on every restart.
 func SDKEnabled() bool {
 	return os.Getenv("SDK_ENABLED") != "false"
 }
@@ -88,6 +88,20 @@ func SDKEnabled() bool {
 // this either; applies live on every restart.
 func Port80Enabled() bool {
 	return os.Getenv("PORT80_ENABLED") != "false"
+}
+
+// Port8084Enabled reports whether wire-pod should also serve its legacy
+// TLS listener on :8084 (kept for 2.0.1-era robot firmware compatibility;
+// see StartChipper), matching Port80Enabled's naming. NO8084 was this
+// var's original, inverted-sense name (true meant "disabled", the
+// opposite of every other toggle here); still honored as a fallback,
+// since real deployments predating this one may already set it, but
+// PORT8084_ENABLED takes precedence when both are set.
+func Port8084Enabled() bool {
+	if v, ok := os.LookupEnv("PORT8084_ENABLED"); ok {
+		return v != "false"
+	}
+	return os.Getenv("NO8084") != "true"
 }
 
 // /home/name/.anki_vector/

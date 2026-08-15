@@ -50,13 +50,15 @@ services:
 
       # These have no dashboard settings page at all, so unlike everything
       # above they apply live on every restart, not just the first boot.
-      # VOSK_THERMAL_MANAGEMENT/VOSK_WITH_GRAMMER only affect the Vosk
+      # VOSK_THERMAL_ENABLED/VOSK_WITH_GRAMMER only affect the Vosk
       # backend (tuning meant for slow hardware like the RPi Zero 2W --
       # pure overhead on a normal server or NAS, hence the off switch).
-      WIREPOD_VOSK_THERMAL_MANAGEMENT: ${WIREPOD_VOSK_THERMAL_MANAGEMENT:-true}
+      WIREPOD_VOSK_THERMAL_ENABLED: ${WIREPOD_VOSK_THERMAL_ENABLED:-true}
       WIREPOD_VOSK_WITH_GRAMMER: ${WIREPOD_VOSK_WITH_GRAMMER:-false}
       WIREPOD_DISABLE_MDNS: ${WIREPOD_DISABLE_MDNS:-false}
-      WIREPOD_NO8084: ${WIREPOD_NO8084:-false}
+      # Legacy :8084 TLS listener, kept for 2.0.1-era robot firmware
+      # compatibility.
+      WIREPOD_PORT8084_ENABLED: ${WIREPOD_PORT8084_ENABLED:-true}
       WIREPOD_JDOCS_PINGER_ENABLED: ${WIREPOD_JDOCS_PINGER_ENABLED:-true}
       # Bot remote-control features (eye color, volume, Alexa opt-in, camera
       # streaming), the jdocs pinger, and its mDNS discovery -- all bolted

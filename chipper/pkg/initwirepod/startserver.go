@@ -248,7 +248,7 @@ func StartChipper() {
 	go grpcServe(grpcListenerOne, voiceProcessor)
 	go httpServe(httpListenerOne)
 
-	if vars.APIConfig.Server.EPConfig && os.Getenv("NO8084") != "true" {
+	if vars.APIConfig.Server.EPConfig && vars.Port8084Enabled() {
 		logger.Println("Starting chipper server at port 8084 for 2.0.1 compatibility")
 		listenerTwo, err = tls.Listen("tcp", ":8084", &tls.Config{
 			Certificates: []tls.Certificate{cert},
@@ -276,7 +276,7 @@ func StartChipper() {
 	fmt.Println("\033[33m\033[1mwire-pod started successfully!\033[0m")
 
 	chipperServing = true
-	if vars.APIConfig.Server.EPConfig && os.Getenv("NO8084") != "true" {
+	if vars.APIConfig.Server.EPConfig && vars.Port8084Enabled() {
 		if runtime.GOOS != "android" {
 			go serverOne.Serve()
 		}
