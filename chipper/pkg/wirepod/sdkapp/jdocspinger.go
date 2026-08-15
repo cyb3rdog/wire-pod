@@ -208,8 +208,25 @@ func RunMDNS(botIP string) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 	entries := make(chan *zeroconf.ServiceEntry)
-	resolver, _ := zeroconf.NewResolver()
-	resolver.Browse(ctx, "_ankivector._tcp", "local", entries)
+	resolver, err := zeroconf.NewResolver()
+	if err != nil {
+		// This runs in its own goroutine (RunMDNS is always called via
+		// "go RunMDNS(...)", both from the automatic connCheck trigger and
+		// the manual /ok?runMDNS=true one), so an unhandled error here
+		// used to reach the unconditional resolver.Browse call below with
+		// resolver == nil, which panics immediately (Browse dereferences
+		// its receiver on the first line) and crashes the entire process
+		// -- taking down wire-pod for every connected robot and the
+		// dashboard over what can be an ordinary, recoverable failure to
+		// join the mDNS multicast group (e.g. no multicast-capable
+		// interface, a restrictive container network policy).
+		logger.Println("Failed to create mDNS resolver:", err)
+		return
+	}
+	if err := resolver.Browse(ctx, "_ankivector._tcp", "local", entries); err != nil {
+		logger.Println("mDNS browse failed:", err)
+		return
+	}
 	for entry := range entries {
 		robotID := strings.Split(entry.HostName, ".")[0]
 		matched := false

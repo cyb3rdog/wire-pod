@@ -193,6 +193,43 @@ func CreateAIReq(transcribedText, esn string, gpt3tryagain, isKG bool) openai.Ch
 // LogTray (docker logs / /api/get_debug_logs) and LogUI (dashboard
 // "recent activity"), unlike the previous stdlib log.Printf call this
 // replaces, which reached neither.
+// newLLMClient builds the *openai.Client (and the endpoint, kept for
+// logging) for the currently configured Knowledge Graph provider,
+// including seeding a default Together model the first time that
+// provider is used with no model set yet. Previously duplicated
+// near-identically in StreamingKGSim (this file) and DoGetImage
+// (kgsim_cmds.go) -- the two copies had already drifted: one defaulted
+// a fresh Together config to "meta-llama/Llama-3-70b-chat-hf", the other
+// still wrote the retired "meta-llama/Llama-2-70b-chat-hf". Returns a
+// nil client if Provider doesn't match any known case, same as the
+// original inline switch did (callers already only ever reach the LLM
+// call after Knowledge.Enable/Provider have been set up through the
+// dashboard, which validates Provider -- see handleSetKGAPI).
+func newLLMClient() (*openai.Client, string) {
+	endpoint := "https://api.openai.com/v1"
+	switch vars.APIConfig.Knowledge.Provider {
+	case "together":
+		if vars.APIConfig.Knowledge.Model == "" {
+			vars.APIConfig.Knowledge.Model = "meta-llama/Llama-3-70b-chat-hf"
+			if err := vars.WriteConfigToDisk(); err != nil {
+				logger.Println("Failed to persist default Together model:", err)
+			}
+		}
+		endpoint = "https://api.together.xyz/v1"
+		conf := openai.DefaultConfig(vars.APIConfig.Knowledge.Key)
+		conf.BaseURL = endpoint
+		return openai.NewClientWithConfig(conf), endpoint
+	case "custom":
+		endpoint = vars.APIConfig.Knowledge.Endpoint
+		conf := openai.DefaultConfig(vars.APIConfig.Knowledge.Key)
+		conf.BaseURL = endpoint
+		return openai.NewClientWithConfig(conf), endpoint
+	case "openai":
+		return openai.NewClient(vars.APIConfig.Knowledge.Key), endpoint
+	}
+	return nil, endpoint
+}
+
 func logLLMError(what, endpoint, model string, elapsed time.Duration, err error) {
 	var detail string
 	var reqErr *openai.RequestError
@@ -292,28 +329,7 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 	var fullfullRespText string
 	var fullRespSlice []string
 	var isDone bool
-	var c *openai.Client
-	llmEndpoint := "https://api.openai.com/v1"
-	switch vars.APIConfig.Knowledge.Provider {
-	case "together":
-		if vars.APIConfig.Knowledge.Model == "" {
-			vars.APIConfig.Knowledge.Model = "meta-llama/Llama-3-70b-chat-hf"
-			if err := vars.WriteConfigToDisk(); err != nil {
-				logger.Println("Failed to persist default Together model:", err)
-			}
-		}
-		llmEndpoint = "https://api.together.xyz/v1"
-		conf := openai.DefaultConfig(vars.APIConfig.Knowledge.Key)
-		conf.BaseURL = llmEndpoint
-		c = openai.NewClientWithConfig(conf)
-	case "custom":
-		llmEndpoint = vars.APIConfig.Knowledge.Endpoint
-		conf := openai.DefaultConfig(vars.APIConfig.Knowledge.Key)
-		conf.BaseURL = llmEndpoint
-		c = openai.NewClientWithConfig(conf)
-	case "openai":
-		c = openai.NewClient(vars.APIConfig.Knowledge.Key)
-	}
+	c, llmEndpoint := newLLMClient()
 	speakReady := make(chan string)
 	streamDone := make(chan struct{})
 	var streamDoneOnce sync.Once

@@ -260,3 +260,35 @@ func TestStreamingKGSimReportsGenuinelyEmptyResponse(t *testing.T) {
 		t.Fatal("StreamingKGSim did not return within 5s for a genuinely empty response")
 	}
 }
+
+// TestNewLLMClientDefaultsTogetherModelToLlama3 guards against the exact
+// drift this helper was extracted to fix: StreamingKGSim and DoGetImage
+// used to each carry their own copy of this provider switch, and the
+// copies had diverged -- one defaulted a fresh Together config to
+// "meta-llama/Llama-3-70b-chat-hf", the other still wrote the retired
+// "meta-llama/Llama-2-70b-chat-hf". With both call sites now routed
+// through one newLLMClient, there's exactly one default to get right.
+func TestNewLLMClientDefaultsTogetherModelToLlama3(t *testing.T) {
+	origKnowledge := vars.APIConfig.Knowledge
+	origPath := vars.ApiConfigPath
+	t.Cleanup(func() {
+		vars.APIConfig.Knowledge = origKnowledge
+		vars.ApiConfigPath = origPath
+	})
+	vars.ApiConfigPath = t.TempDir() + "/apiConfig.json"
+	vars.APIConfig.Knowledge.Provider = "together"
+	vars.APIConfig.Knowledge.Key = "test-key"
+	vars.APIConfig.Knowledge.Model = ""
+
+	client, endpoint := newLLMClient()
+
+	if client == nil {
+		t.Fatal("newLLMClient returned a nil client for provider \"together\"")
+	}
+	if endpoint != "https://api.together.xyz/v1" {
+		t.Errorf("endpoint = %q, want https://api.together.xyz/v1", endpoint)
+	}
+	if vars.APIConfig.Knowledge.Model != "meta-llama/Llama-3-70b-chat-hf" {
+		t.Errorf("default Together model = %q, want meta-llama/Llama-3-70b-chat-hf", vars.APIConfig.Knowledge.Model)
+	}
+}

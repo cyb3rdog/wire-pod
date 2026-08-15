@@ -470,25 +470,12 @@ func DoGetImage(msgs []openai.ChatCompletionMessage, param string, robot *vector
 	var fullfullRespText string
 	var fullRespSlice []string
 	var isDone bool
-	var c *openai.Client
-	switch vars.APIConfig.Knowledge.Provider {
-	case "together":
-		if vars.APIConfig.Knowledge.Model == "" {
-			vars.APIConfig.Knowledge.Model = "meta-llama/Llama-2-70b-chat-hf"
-			if err := vars.WriteConfigToDisk(); err != nil {
-				logger.Println("Failed to persist default Together model:", err)
-			}
-		}
-		conf := openai.DefaultConfig(vars.APIConfig.Knowledge.Key)
-		conf.BaseURL = "https://api.together.xyz/v1"
-		c = openai.NewClientWithConfig(conf)
-	case "openai":
-		c = openai.NewClient(vars.APIConfig.Knowledge.Key)
-	case "custom":
-		conf := openai.DefaultConfig(vars.APIConfig.Knowledge.Key)
-		conf.BaseURL = vars.APIConfig.Knowledge.Endpoint
-		c = openai.NewClientWithConfig(conf)
-	}
+	// newLLMClient (kgsim.go) replaces what used to be a second,
+	// independently-maintained copy of this switch -- it had already
+	// drifted from the one in StreamingKGSim: this copy still defaulted
+	// a fresh Together config to the retired "meta-llama/Llama-2-70b-chat-hf"
+	// instead of the Llama-3 model the other copy had already moved to.
+	c, _ := newLLMClient()
 	ctx := context.Background()
 	speakReady := make(chan string)
 	streamDone := make(chan struct{})
