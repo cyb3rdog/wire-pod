@@ -57,8 +57,10 @@ services:
       WIREPOD_VOSK_WITH_GRAMMER: ${WIREPOD_VOSK_WITH_GRAMMER:-false}
       WIREPOD_DISABLE_MDNS: ${WIREPOD_DISABLE_MDNS:-false}
       # Legacy :8084 TLS listener, kept for 2.0.1-era robot firmware
-      # compatibility.
-      WIREPOD_PORT8084_ENABLED: ${WIREPOD_PORT8084_ENABLED:-true}
+      # compatibility. Inverted sense (true = disabled) -- an intentional
+      # exception to the _ENABLED naming used elsewhere in this file,
+      # since this var predates it and real deployments already set it.
+      WIREPOD_NO8084: ${WIREPOD_NO8084:-false}
       WIREPOD_JDOCS_PINGER_ENABLED: ${WIREPOD_JDOCS_PINGER_ENABLED:-true}
       # Bot remote-control features (eye color, volume, Alexa opt-in, camera
       # streaming), the jdocs pinger, and its mDNS discovery -- all bolted

@@ -92,15 +92,12 @@ func Port80Enabled() bool {
 
 // Port8084Enabled reports whether wire-pod should also serve its legacy
 // TLS listener on :8084 (kept for 2.0.1-era robot firmware compatibility;
-// see StartChipper), matching Port80Enabled's naming. NO8084 was this
-// var's original, inverted-sense name (true meant "disabled", the
-// opposite of every other toggle here); still honored as a fallback,
-// since real deployments predating this one may already set it, but
-// PORT8084_ENABLED takes precedence when both are set.
+// see StartChipper). Deliberately left keyed on NO8084 rather than
+// migrated to the _ENABLED convention the other toggles here use: NO8084
+// predates this branch, real deployments already set it, and its
+// inverted sense (true means "disabled") only matters at this one call
+// site -- not worth a second env var and a compat shim to rename.
 func Port8084Enabled() bool {
-	if v, ok := os.LookupEnv("PORT8084_ENABLED"); ok {
-		return v != "false"
-	}
 	return os.Getenv("NO8084") != "true"
 }
 

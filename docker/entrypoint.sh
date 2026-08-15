@@ -230,8 +230,8 @@ apply_env_overrides() {
         update_export "DISABLE_MDNS" "${WIREPOD_DISABLE_MDNS}" "${source_file}"
     fi
 
-    if [ -n "${WIREPOD_PORT8084_ENABLED:-}" ]; then
-        update_export "PORT8084_ENABLED" "${WIREPOD_PORT8084_ENABLED}" "${source_file}"
+    if [ -n "${WIREPOD_NO8084:-}" ]; then
+        update_export "NO8084" "${WIREPOD_NO8084}" "${source_file}"
     fi
 
     if [ -n "${WIREPOD_JDOCS_PINGER_ENABLED:-}" ]; then

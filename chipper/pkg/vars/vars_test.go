@@ -52,45 +52,26 @@ func TestPort80EnabledDefaultsOnAndRespectsFalse(t *testing.T) {
 	}
 }
 
-// TestPort8084EnabledBackwardCompat guards the NO8084 -> PORT8084_ENABLED
-// rename: NO8084 was inverted-sense (true meant disabled, unlike every
-// other toggle here) and predates this branch, so real deployments may
-// already set it -- it must keep working as a fallback, but the new,
-// consistently-named var must win whenever both are set.
-func TestPort8084EnabledBackwardCompat(t *testing.T) {
-	t.Cleanup(func() {
-		os.Unsetenv("PORT8084_ENABLED")
-		os.Unsetenv("NO8084")
-	})
+// TestPort8084EnabledInvertedSense guards NO8084's semantics, which are
+// deliberately inverted relative to every other toggle in this file
+// (true means disabled, not enabled) -- see the doc comment on
+// Port8084Enabled for why this var was kept as-is instead of migrated.
+func TestPort8084EnabledInvertedSense(t *testing.T) {
+	t.Cleanup(func() { os.Unsetenv("NO8084") })
 
-	os.Unsetenv("PORT8084_ENABLED")
 	os.Unsetenv("NO8084")
 	if !Port8084Enabled() {
-		t.Error("Port8084Enabled() = false with both unset, want true (default on)")
+		t.Error("Port8084Enabled() = false with NO8084 unset, want true (default on)")
 	}
 
-	os.Unsetenv("PORT8084_ENABLED")
 	os.Setenv("NO8084", "true")
 	if Port8084Enabled() {
-		t.Error("Port8084Enabled() = true with legacy NO8084=true, want false")
+		t.Error("Port8084Enabled() = true with NO8084=true, want false")
 	}
 
-	os.Unsetenv("PORT8084_ENABLED")
 	os.Setenv("NO8084", "false")
 	if !Port8084Enabled() {
-		t.Error("Port8084Enabled() = false with legacy NO8084=false, want true")
-	}
-
-	os.Setenv("PORT8084_ENABLED", "true")
-	os.Setenv("NO8084", "true") // legacy var says disabled
-	if !Port8084Enabled() {
-		t.Error("Port8084Enabled() = false with PORT8084_ENABLED=true overriding legacy NO8084=true, want true (new var wins)")
-	}
-
-	os.Setenv("PORT8084_ENABLED", "false")
-	os.Setenv("NO8084", "false") // legacy var says enabled
-	if Port8084Enabled() {
-		t.Error("Port8084Enabled() = true with PORT8084_ENABLED=false overriding legacy NO8084=false, want false (new var wins)")
+		t.Error("Port8084Enabled() = false with NO8084=false, want true")
 	}
 }
 
