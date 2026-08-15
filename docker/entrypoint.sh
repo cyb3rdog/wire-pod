@@ -3,9 +3,31 @@ set -euo pipefail
 
 APP_ROOT="/opt/wire-pod"
 DATA_ROOT="${WIREPOD_DATA_DIR:-/data}"
+IMAGES_ROOT="${WIREPOD_IMAGES_DIR:-/images}"
 DEFAULT_SOURCE="${APP_ROOT}/docker/default-source.sh"
+RUN_AS_USER="wirepod"
 
-mkdir -p "${DATA_ROOT}"
+# The image runs as an unprivileged user (see dockerfile), but a
+# bind-mounted host directory (docker-compose's ./data, ./images) is
+# created by the Docker daemon owned by root the first time -- wire-pod
+# couldn't write to it otherwise. Self-heal here: if we're root, fix
+# ownership only where it's actually wrong (skip the recursive chown on
+# an already-correct, possibly large data dir on every restart), then
+# drop to the unprivileged user for everything else, including the app
+# itself. CAP_NET_BIND_SERVICE (set on the binary at build time) still
+# lets that user bind :80/:443 afterward.
+if [ "$(id -u)" = "0" ]; then
+    mkdir -p "${DATA_ROOT}" "${IMAGES_ROOT}"
+    target_uid="$(id -u "${RUN_AS_USER}")"
+    for dir in "${DATA_ROOT}" "${IMAGES_ROOT}"; do
+        if [ "$(stat -c %u "${dir}")" != "${target_uid}" ]; then
+            chown -R "${RUN_AS_USER}:${RUN_AS_USER}" "${dir}"
+        fi
+    done
+    exec setpriv --reuid="${RUN_AS_USER}" --regid="${RUN_AS_USER}" --clear-groups "$0" "$@"
+fi
+
+mkdir -p "${DATA_ROOT}" "${IMAGES_ROOT}"
 
 link_dir() {
     local rel_path="$1"
@@ -133,6 +155,54 @@ apply_env_overrides() {
     if [ -n "${WIREPOD_PICOVOICE_APIKEY:-}" ]; then
         update_export "PICOVOICE_APIKEY" "${WIREPOD_PICOVOICE_APIKEY}" "${source_file}"
         printf '%s\n' "${WIREPOD_PICOVOICE_APIKEY}" >"${DATA_ROOT}/chipper/pico.key"
+    fi
+
+    if [ -n "${WIREPOD_STT_WHISPER_URL:-}" ]; then
+        update_export "STT_WHISPER_URL" "${WIREPOD_STT_WHISPER_URL}" "${source_file}"
+    fi
+
+    if [ -n "${WIREPOD_STT_WHISPER_KEY:-}" ]; then
+        update_export "STT_WHISPER_KEY" "${WIREPOD_STT_WHISPER_KEY}" "${source_file}"
+    fi
+
+    if [ -n "${WIREPOD_STT_WHISPER_MODEL:-}" ]; then
+        update_export "STT_WHISPER_MODEL" "${WIREPOD_STT_WHISPER_MODEL}" "${source_file}"
+    fi
+
+    # Knowledge ("Ask") and weather settings, like everything above, only
+    # ever seed the very first config (see vars.CreateConfigFromEnv) --
+    # once apiConfig.json exists, the dashboard is authoritative and these
+    # are ignored on subsequent restarts.
+    if [ -n "${WIREPOD_KNOWLEDGE_ENABLED:-}" ]; then
+        update_export "KNOWLEDGE_ENABLED" "${WIREPOD_KNOWLEDGE_ENABLED}" "${source_file}"
+    fi
+
+    if [ -n "${WIREPOD_KNOWLEDGE_PROVIDER:-}" ]; then
+        update_export "KNOWLEDGE_PROVIDER" "${WIREPOD_KNOWLEDGE_PROVIDER}" "${source_file}"
+    fi
+
+    if [ -n "${WIREPOD_KNOWLEDGE_KEY:-}" ]; then
+        update_export "KNOWLEDGE_KEY" "${WIREPOD_KNOWLEDGE_KEY}" "${source_file}"
+    fi
+
+    if [ -n "${WIREPOD_KNOWLEDGE_ID:-}" ]; then
+        update_export "KNOWLEDGE_ID" "${WIREPOD_KNOWLEDGE_ID}" "${source_file}"
+    fi
+
+    if [ -n "${WIREPOD_WEATHERAPI_ENABLED:-}" ]; then
+        update_export "WEATHERAPI_ENABLED" "${WIREPOD_WEATHERAPI_ENABLED}" "${source_file}"
+    fi
+
+    if [ -n "${WIREPOD_WEATHERAPI_PROVIDER:-}" ]; then
+        update_export "WEATHERAPI_PROVIDER" "${WIREPOD_WEATHERAPI_PROVIDER}" "${source_file}"
+    fi
+
+    if [ -n "${WIREPOD_WEATHERAPI_KEY:-}" ]; then
+        update_export "WEATHERAPI_KEY" "${WIREPOD_WEATHERAPI_KEY}" "${source_file}"
+    fi
+
+    if [ -n "${WIREPOD_WEATHERAPI_UNIT:-}" ]; then
+        update_export "WEATHERAPI_UNIT" "${WIREPOD_WEATHERAPI_UNIT}" "${source_file}"
     fi
 }
 

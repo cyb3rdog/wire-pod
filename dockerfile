@@ -143,6 +143,7 @@ ARG COMMIT_SHA=unknown
 
 ENV DEBIAN_FRONTEND=noninteractive \
     WIREPOD_DATA_DIR=/data \
+    WIREPOD_IMAGES_DIR=/images \
     WIREPOD_IN_DOCKER=1 \
     LD_LIBRARY_PATH=/opt/vosk/libvosk
 
@@ -164,6 +165,7 @@ RUN apt-get update \
         libsox3 \
         tzdata \
         unzip \
+        util-linux \
         wget \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 wirepod \
@@ -175,25 +177,29 @@ COPY --from=builder /opt/vosk/libvosk /opt/vosk/libvosk
 COPY --from=builder /src /opt/wire-pod
 COPY --from=builder /build/chipper /opt/wire-pod/chipper/chipper
 
-# CAP_NET_BIND_SERVICE lets the unprivileged "wirepod" user (set below)
-# bind the privileged 80/443 ports without the process needing to run
-# as root.
+# CAP_NET_BIND_SERVICE lets the unprivileged "wirepod" user (which
+# entrypoint.sh drops to at container start, after fixing up bind-mount
+# ownership -- see there) bind the privileged 80/443 ports without the
+# process needing to run as root.
 RUN chmod +x \
         /opt/wire-pod/setup.sh \
         /opt/wire-pod/update.sh \
         /opt/wire-pod/chipper/start.sh \
         /opt/wire-pod/docker/entrypoint.sh \
     && setcap 'cap_net_bind_service=+ep' /opt/wire-pod/chipper/chipper \
-    && mkdir -p /data \
-    && chown -R wirepod:wirepod /opt/wire-pod /data /home/wirepod
+    && mkdir -p /data /images \
+    && chown -R wirepod:wirepod /opt/wire-pod /data /images /home/wirepod
 
-VOLUME ["/data"]
+VOLUME ["/data", "/images"]
 
 EXPOSE 80 443 8080 8084
 
 LABEL org.opencontainers.image.revision="${COMMIT_SHA}"
 
-USER wirepod
-
+# Deliberately no USER directive here: the container starts as root so
+# entrypoint.sh can fix ownership of bind-mounted host directories
+# (docker-compose's ./data, ./images, which Docker creates owned by
+# root) before dropping to the unprivileged "wirepod" user itself via
+# setpriv. See docker/entrypoint.sh.
 ENTRYPOINT ["/opt/wire-pod/docker/entrypoint.sh"]
 CMD ["/opt/wire-pod/chipper/start.sh"]

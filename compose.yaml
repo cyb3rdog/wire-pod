@@ -8,24 +8,56 @@ services:
     image: ghcr.io/kercre123/wire-pod:main
     restart: unless-stopped
     environment:
+      # Internal mount points -- must match the `volumes:` section below.
+      # Not meant to be overridden independently of it.
       WIREPOD_DATA_DIR: /data
+      WIREPOD_IMAGES_DIR: /images
+
+      # Everything below only seeds wire-pod's config the very first time
+      # it starts (before chipper/apiConfig.json exists in ./data). After
+      # that, the dashboard (Server Settings) is authoritative and these
+      # are ignored on restart -- change settings there, not here, once
+      # you're set up. Override any of these via a `.env` file next to
+      # this compose.yaml, or `WIREPOD_FOO=bar docker compose up -d`,
+      # without editing this file.
+      WIREPOD_DEBUG_LOGGING: ${WIREPOD_DEBUG_LOGGING:-true}
+      WIREPOD_USE_INBUILT_BLE: ${WIREPOD_USE_INBUILT_BLE:-false}
+
+      # STT: which backend, its language (vosk/whisper.cpp), and -- for
+      # the "whisper" backend -- the HTTP endpoint to use. Leave
+      # WIREPOD_STT_WHISPER_URL unset to use the real OpenAI API (needs
+      # WIREPOD_STT_WHISPER_KEY); point it at a self-hosted
+      # OpenAI-compatible server (e.g. faster-whisper-server) instead to
+      # avoid needing a key at all.
+      WIREPOD_STT_SERVICE: ${WIREPOD_STT_SERVICE:-vosk}
+      WIREPOD_STT_LANGUAGE: ${WIREPOD_STT_LANGUAGE:-en-US}
+      WIREPOD_PICOVOICE_APIKEY: ${WIREPOD_PICOVOICE_APIKEY:-}
+      WIREPOD_STT_WHISPER_URL: ${WIREPOD_STT_WHISPER_URL:-}
+      WIREPOD_STT_WHISPER_KEY: ${WIREPOD_STT_WHISPER_KEY:-}
+      WIREPOD_STT_WHISPER_MODEL: ${WIREPOD_STT_WHISPER_MODEL:-}
+
+      # Knowledge graph / "Ask" (LLM fallback for unmatched speech).
+      WIREPOD_KNOWLEDGE_ENABLED: ${WIREPOD_KNOWLEDGE_ENABLED:-false}
+      WIREPOD_KNOWLEDGE_PROVIDER: ${WIREPOD_KNOWLEDGE_PROVIDER:-}
+      WIREPOD_KNOWLEDGE_KEY: ${WIREPOD_KNOWLEDGE_KEY:-}
+      WIREPOD_KNOWLEDGE_ID: ${WIREPOD_KNOWLEDGE_ID:-}
+
+      # Weather intent.
+      WIREPOD_WEATHERAPI_ENABLED: ${WIREPOD_WEATHERAPI_ENABLED:-false}
+      WIREPOD_WEATHERAPI_PROVIDER: ${WIREPOD_WEATHERAPI_PROVIDER:-}
+      WIREPOD_WEATHERAPI_KEY: ${WIREPOD_WEATHERAPI_KEY:-}
+      WIREPOD_WEATHERAPI_UNIT: ${WIREPOD_WEATHERAPI_UNIT:-}
     ports:
       - "80:80"
       - "443:443"
       - "8080:8080"
       - "8084:8084"
     volumes:
-      - wire-pod-data:/data
-      - wire-pod-images:/images
+      - ./data:/data
+      - ./images:/images
     healthcheck:
       test: [ "CMD", "curl", "-fsS", "http://localhost:8080/ok" ]
       interval: 30s
       timeout: 5s
       retries: 5
       start_period: 30s
-
-volumes:
-  wire-pod-data:
-    driver: local
-  wire-pod-images:
-    driver: local
