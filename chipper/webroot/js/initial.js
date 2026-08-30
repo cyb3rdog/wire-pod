@@ -14,22 +14,14 @@ function sendSetupInfo() {
   document.getElementById("config-options").style.display = "none";
   updateSetupStatus("Initiating setup...");
 
-  fetch("/api/get_stt_info")
-    .then((response) => response.json())
+  getJSON("/api/get_stt_info")
     .then((parsed) => {
       if (parsed.provider !== "vosk" && parsed.provider !== "whisper.cpp") {
         setConn();
         return;
       }
 
-      fetch("/api/set_stt_info", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ language: "en-US" }),
-      })
-        .then((response) => response.text())
+      postJSON("/api/set_stt_info", { language: "en-US" })
         .then((response) => {
           if (response.includes("success")) {
             updateSetupStatus("Language set successfully.");

@@ -6,9 +6,27 @@ var GetLog = false;
 
 const getE = (element) => document.getElementById(element);
 
+// postJSON/getJSON: the fetch-with-JSON-headers-then-read-the-body
+// boilerplate below used to be copy-pasted into every settings
+// send/update function in this file (and initial.js, which loads after
+// this file on initial.html and shares its global scope) -- 8+
+// near-identical copies. Both return the parsed response as a Promise,
+// same as calling fetch(...).then(...) directly would, so existing
+// .then()/.catch() chains at call sites don't need to change shape.
+function postJSON(url, data) {
+  return fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }).then((response) => response.text());
+}
+
+function getJSON(url) {
+  return fetch(url).then((response) => response.json());
+}
+
 function updateIntentSelection(element) {
-  fetch("/api/get_custom_intents_json")
-    .then((response) => response.json())
+  getJSON("/api/get_custom_intents_json")
     .then((listResponse) => {
       const container = getE(element);
       container.innerHTML = "";
@@ -49,13 +67,11 @@ function checkInited() {
     }
   });
 
-  fetch("/api/get_config")
-    .then((response) => response.json())
-    .then((config) => {
-      if (!config.pastinitialsetup) {
-        window.location.href = "/initial.html";
-      }
-    });
+  getJSON("/api/get_config").then((config) => {
+    if (!config.pastinitialsetup) {
+      window.location.href = "/initial.html";
+    }
+  });
 }
 
 function createIntentSelect(element) {
@@ -78,8 +94,7 @@ function createIntentSelect(element) {
 function editFormCreate() {
   const intentNumber = getE("editSelectintents").selectedIndex;
 
-  fetch("/api/get_custom_intents_json")
-    .then((response) => response.json())
+  getJSON("/api/get_custom_intents_json")
     .then((intents) => {
       const intent = intents[intentNumber];
       if (intent) {
@@ -133,39 +148,23 @@ function editIntent(intentNumber) {
     luascript: getE("luascript").value,
   };
 
-  fetch("/api/edit_custom_intent", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(data),
-  })
-    .then((response) => response.text())
-    .then((response) => {
-      displayMessage("editIntentStatus", response);
-      alert(response)
-      updateIntentSelection("editSelect");
-      updateIntentSelection("deleteSelect");
-    });
+  postJSON("/api/edit_custom_intent", data).then((response) => {
+    displayMessage("editIntentStatus", response);
+    alert(response)
+    updateIntentSelection("editSelect");
+    updateIntentSelection("deleteSelect");
+  });
 }
 
 function deleteSelectedIntent() {
   const intentNumber = getE("editSelectintents").selectedIndex + 1;
 
-  fetch("/api/remove_custom_intent", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ number: intentNumber }),
-  })
-    .then((response) => response.text())
-    .then((response) => {
-      hideEditIntents();
-      alert(response)
-      updateIntentSelection("editSelect");
-      updateIntentSelection("deleteSelect");
-    });
+  postJSON("/api/remove_custom_intent", { number: intentNumber }).then((response) => {
+    hideEditIntents();
+    alert(response)
+    updateIntentSelection("editSelect");
+    updateIntentSelection("deleteSelect");
+  });
 }
 
 function sendIntentAdd() {
@@ -191,20 +190,12 @@ function sendIntentAdd() {
 
   displayMessage("addIntentStatus", "Adding...");
 
-  fetch("/api/add_custom_intent", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(data),
-  })
-    .then((response) => response.text())
-    .then((response) => {
-      displayMessage("addIntentStatus", response);
-      alert(response)
-      updateIntentSelection("editSelect");
-      updateIntentSelection("deleteSelect");
-    });
+  postJSON("/api/add_custom_intent", data).then((response) => {
+    displayMessage("addIntentStatus", response);
+    alert(response)
+    updateIntentSelection("editSelect");
+    updateIntentSelection("deleteSelect");
+  });
 }
 
 function checkWeather() {
@@ -219,65 +210,99 @@ function sendWeatherAPIKey() {
 
   displayMessage("addWeatherProviderAPIStatus", "Saving...");
 
-  fetch("/api/set_weather_api", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(data),
-  })
-    .then((response) => response.text())
-    .then((response) => {
-      displayMessage("addWeatherProviderAPIStatus", response);
-    });
+  postJSON("/api/set_weather_api", data).then((response) => {
+    displayMessage("addWeatherProviderAPIStatus", response);
+  });
 }
 
 function updateWeatherAPI() {
-  fetch("/api/get_weather_api")
-    .then((response) => response.json())
-    .then((data) => {
-      getE("weatherProvider").value = data.provider;
-      getE("apiKey").value = data.key;
-      checkWeather();
-    });
+  getJSON("/api/get_weather_api").then((data) => {
+    getE("weatherProvider").value = data.provider;
+    getE("apiKey").value = data.key;
+    checkWeather();
+  });
 }
+
+// KG_PROVIDER_CONTAINERS: every container div checkKG toggles, always
+// hidden first regardless of the selected provider.
+const KG_PROVIDER_CONTAINERS = [
+  "houndifyInput",
+  "togetherInput",
+  "customAIInput",
+  "intentGraphInput",
+  "openAIInput",
+  "saveChatInput",
+  "llmCommandInput",
+  "openAIVoiceForEnglishInput",
+];
+
+// KG_PROVIDERS is the one place the "Ask" (knowledge graph) feature's
+// per-provider shape is declared -- which input containers a provider
+// shows (checkKG), and which form fields map to which request/response
+// JSON keys, value vs. checkbox (sendKGAPIKey writes these out,
+// updateKGAPI reads them back the same way). Previously this same
+// provider list, and its per-field mapping, was hand-duplicated across
+// all three functions -- easy for a provider's fields to drift out of
+// sync between what gets saved and what gets displayed on reload, since
+// nothing forced the three copies to agree.
+const KG_PROVIDERS = {
+  houndify: {
+    containers: ["houndifyInput", "intentGraphInput"],
+    fields: [
+      { el: "houndKey", key: "key" },
+      { el: "houndID", key: "id" },
+      { el: "intentyes", key: "intentgraph", checkbox: true },
+    ],
+  },
+  openai: {
+    containers: [
+      "intentGraphInput",
+      "openAIInput",
+      "saveChatInput",
+      "llmCommandInput",
+      "openAIVoiceForEnglishInput",
+    ],
+    fields: [
+      { el: "openaiKey", key: "key" },
+      { el: "openAIPrompt", key: "openai_prompt" },
+      { el: "intentyes", key: "intentgraph", checkbox: true },
+      { el: "saveChatYes", key: "save_chat", checkbox: true },
+      { el: "commandYes", key: "commands_enable", checkbox: true },
+      { el: "openaiVoice", key: "openai_voice" },
+      { el: "voiceEnglishYes", key: "openai_voice_with_english", checkbox: true },
+    ],
+  },
+  together: {
+    containers: ["intentGraphInput", "togetherInput", "saveChatInput", "llmCommandInput"],
+    fields: [
+      { el: "togetherKey", key: "key" },
+      { el: "togetherModel", key: "model" },
+      { el: "togetherAIPrompt", key: "openai_prompt" },
+      { el: "intentyes", key: "intentgraph", checkbox: true },
+      { el: "saveChatYes", key: "save_chat", checkbox: true },
+      { el: "commandYes", key: "commands_enable", checkbox: true },
+    ],
+  },
+  custom: {
+    containers: ["intentGraphInput", "customAIInput", "saveChatInput", "llmCommandInput"],
+    fields: [
+      { el: "customKey", key: "key" },
+      { el: "customModel", key: "model" },
+      { el: "customAIPrompt", key: "openai_prompt" },
+      { el: "customAIEndpoint", key: "endpoint" },
+      { el: "intentyes", key: "intentgraph", checkbox: true },
+      { el: "saveChatYes", key: "save_chat", checkbox: true },
+      { el: "commandYes", key: "commands_enable", checkbox: true },
+    ],
+  },
+};
 
 function checkKG() {
   const provider = getE("kgProvider").value;
-  const elements = [
-    "houndifyInput",
-    "togetherInput",
-    "customAIInput",
-    "intentGraphInput",
-    "openAIInput",
-    "saveChatInput",
-    "llmCommandInput",
-    "openAIVoiceForEnglishInput",
-  ];
-
-  elements.forEach((el) => (getE(el).style.display = "none"));
-
-  if (provider) {
-    if (provider === "houndify") {
-      getE("houndifyInput").style.display = "block";
-      getE("intentGraphInput").style.display = "block";
-    } else if (provider === "openai") {
-      getE("intentGraphInput").style.display = "block";
-      getE("openAIInput").style.display = "block";
-      getE("saveChatInput").style.display = "block";
-      getE("llmCommandInput").style.display = "block";
-      getE("openAIVoiceForEnglishInput").style.display = "block";
-    } else if (provider === "together") {
-      getE("intentGraphInput").style.display = "block";
-      getE("togetherInput").style.display = "block";
-      getE("saveChatInput").style.display = "block";
-      getE("llmCommandInput").style.display = "block";
-    } else if (provider === "custom") {
-      getE("intentGraphInput").style.display = "block";
-      getE("customAIInput").style.display = "block";
-      getE("saveChatInput").style.display = "block";
-      getE("llmCommandInput").style.display = "block";
-    }
+  KG_PROVIDER_CONTAINERS.forEach((el) => (getE(el).style.display = "none"));
+  const cfg = KG_PROVIDERS[provider];
+  if (cfg) {
+    cfg.containers.forEach((el) => (getE(el).style.display = "block"));
   }
 }
 
@@ -298,49 +323,19 @@ function sendKGAPIKey() {
     commands_enable: false,
     endpoint: "",
   };
-  if (provider === "openai") {
-    data.key = getE("openaiKey").value;
-    data.openai_prompt = getE("openAIPrompt").value;
-    data.intentgraph = getE("intentyes").checked
-    data.save_chat = getE("saveChatYes").checked
-    data.commands_enable = getE("commandYes").checked
-    data.openai_voice = getE("openaiVoice").value
-    data.openai_voice_with_english = getE("voiceEnglishYes").checked
-  } else if (provider === "custom") {
-    data.key = getE("customKey").value;
-    data.model = getE("customModel").value;
-    data.openai_prompt = getE("customAIPrompt").value;
-    data.endpoint = getE("customAIEndpoint").value;
-    data.intentgraph = getE("intentyes").checked
-    data.save_chat = getE("saveChatYes").checked
-    data.commands_enable = getE("commandYes").checked
-  } else if (provider === "together") {
-    data.key = getE("togetherKey").value;
-    data.model = getE("togetherModel").value;
-    data.openai_prompt = getE("togetherAIPrompt").value;
-    data.intentgraph = getE("intentyes").checked;
-    data.save_chat = getE("saveChatYes").checked
-    data.commands_enable = getE("commandYes").checked
-  } else if (provider === "houndify") {
-    data.key = getE("houndKey").value;
-    data.id = getE("houndID").value;
-    data.intentgraph = getE("intentyes").checked
+  const cfg = KG_PROVIDERS[provider];
+  if (cfg) {
+    cfg.fields.forEach(({ el, key, checkbox }) => {
+      data[key] = checkbox ? getE(el).checked : getE(el).value;
+    });
   } else {
     data.enable = false;
   }
 
-  fetch("/api/set_kg_api", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(data),
-  })
-    .then((response) => response.text())
-    .then((response) => {
-      displayMessage("addKGProviderAPIStatus", response);
-      alert(response);
-    });
+  postJSON("/api/set_kg_api", data).then((response) => {
+    displayMessage("addKGProviderAPIStatus", response);
+    alert(response);
+  });
 }
 
 function deleteSavedChats() {
@@ -354,40 +349,20 @@ function deleteSavedChats() {
 }
 
 function updateKGAPI() {
-  fetch("/api/get_kg_api")
-    .then((response) => response.json())
-    .then((data) => {
-      getE("kgProvider").value = data.provider;
-      if (data.provider === "openai") {
-        getE("openaiKey").value = data.key;
-        getE("openAIPrompt").value = data.openai_prompt;
-        getE("openaiVoice").value = data.openai_voice;
-        getE("commandYes").checked = data.commands_enable
-        getE("intentyes").checked = data.intentgraph
-        getE("saveChatYes").checked = data.save_chat
-        getE("voiceEnglishYes").checked = data.openai_voice_with_english
-      } else if (data.provider === "together") {
-        getE("togetherKey").value = data.key;
-        getE("togetherModel").value = data.model;
-        getE("togetherAIPrompt").value = data.openai_prompt;
-        getE("commandYes").checked = data.commands_enable
-        getE("intentyes").checked = data.intentgraph
-        getE("saveChatYes").checked = data.save_chat
-      } else if (data.provider === "custom") {
-        getE("customKey").value = data.key;
-        getE("customModel").value = data.model;
-        getE("customAIPrompt").value = data.openai_prompt;
-        getE("customAIEndpoint").value = data.endpoint;
-        getE("commandYes").checked = data.commands_enable
-        getE("intentyes").checked = data.intentgraph
-        getE("saveChatYes").checked = data.save_chat
-      } else if (data.provider === "houndify") {
-        getE("houndKey").value = data.key;
-        getE("houndID").value = data.id;
-        getE("intentyes").checked = data.intentgraph
-      }
-      checkKG();
-    });
+  getJSON("/api/get_kg_api").then((data) => {
+    getE("kgProvider").value = data.provider;
+    const cfg = KG_PROVIDERS[data.provider];
+    if (cfg) {
+      cfg.fields.forEach(({ el, key, checkbox }) => {
+        if (checkbox) {
+          getE(el).checked = data[key];
+        } else {
+          getE(el).value = data[key];
+        }
+      });
+    }
+    checkKG();
+  });
 }
 
 function setSTTLanguage() {
@@ -395,23 +370,15 @@ function setSTTLanguage() {
 
   displayMessage("languageStatus", "Setting...");
 
-  fetch("/api/set_stt_info", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(data),
-  })
-    .then((response) => response.text())
-    .then((response) => {
-      if (response.includes("downloading")) {
-        displayMessage("languageStatus", "Downloading model...");
-        updateSTTLanguageDownload();
-      } else {
-        displayMessage("languageStatus", response);
-        getE("languageSelectionDiv").style.display = response.includes("success") ? "block" : "none";
-      }
-    });
+  postJSON("/api/set_stt_info", data).then((response) => {
+    if (response.includes("downloading")) {
+      displayMessage("languageStatus", "Downloading model...");
+      updateSTTLanguageDownload();
+    } else {
+      displayMessage("languageStatus", response);
+      getE("languageSelectionDiv").style.display = response.includes("success") ? "block" : "none";
+    }
+  });
 }
 
 function updateSTTLanguageDownload() {
@@ -443,32 +410,22 @@ function sendSTTServiceConfig() {
     whisperModel: getE("whisperModel").value,
   };
 
-  fetch("/api/set_stt_service", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(data),
-  })
-    .then((response) => response.text())
-    .then((response) => {
-      displayMessage("addSTTServiceAPIStatus", response);
-      alert(response);
-    });
+  postJSON("/api/set_stt_service", data).then((response) => {
+    displayMessage("addSTTServiceAPIStatus", response);
+    alert(response);
+  });
 }
 
 function updateSTTServiceInfo() {
-  fetch("/api/get_stt_info")
-    .then((response) => response.json())
-    .then((data) => {
-      getE("sttServiceSelect").value = data.provider === "whisper" ? "whisper" : "vosk";
-      if (data.whisper) {
-        getE("whisperURL").value = data.whisper.base_url || "";
-        getE("whisperKey").value = data.whisper.api_key || "";
-        getE("whisperModel").value = data.whisper.model || "";
-      }
-      checkSTTService();
-    });
+  getJSON("/api/get_stt_info").then((data) => {
+    getE("sttServiceSelect").value = data.provider === "whisper" ? "whisper" : "vosk";
+    if (data.whisper) {
+      getE("whisperURL").value = data.whisper.base_url || "";
+      getE("whisperKey").value = data.whisper.api_key || "";
+      getE("whisperModel").value = data.whisper.model || "";
+    }
+    checkSTTService();
+  });
 }
 
 function sendRestart() {
@@ -615,17 +572,15 @@ function checkUpdate() {
 
 function showLanguage() {
   toggleVisibility(["section-weather", "section-restart", "section-kg", "section-language", "section-stt-service"], "section-language", "icon-Language");
-  fetch("/api/get_stt_info")
-    .then((response) => response.json())
-    .then((parsed) => {
-      if (parsed.provider !== "vosk" && parsed.provider !== "whisper.cpp") {
-        displayError("languageStatus", `To set the STT language, the provider must be Vosk or Whisper. The current one is '${parsed.sttProvider}'.`);
-        getE("languageSelectionDiv").style.display = "none";
-      } else {
-        getE("languageSelectionDiv").style.display = "block";
-        getE("languageSelection").value = parsed.language;
-      }
-    });
+  getJSON("/api/get_stt_info").then((parsed) => {
+    if (parsed.provider !== "vosk" && parsed.provider !== "whisper.cpp") {
+      displayError("languageStatus", `To set the STT language, the provider must be Vosk or Whisper. The current one is '${parsed.sttProvider}'.`);
+      getE("languageSelectionDiv").style.display = "none";
+    } else {
+      getE("languageSelectionDiv").style.display = "block";
+      getE("languageSelection").value = parsed.language;
+    }
+  });
 }
 
 function showVersion() {
