@@ -292,3 +292,36 @@ func TestNewLLMClientDefaultsTogetherModelToLlama3(t *testing.T) {
 		t.Errorf("default Together model = %q, want meta-llama/Llama-3-70b-chat-hf", vars.APIConfig.Knowledge.Model)
 	}
 }
+
+// TestJoinSentencesAndCaptureTrailing guards the extraction of this
+// logic out of StreamingKGSim and DoGetImage, which previously each
+// carried their own identical copy.
+func TestJoinSentencesAndCaptureTrailing(t *testing.T) {
+	t.Run("no trailing content", func(t *testing.T) {
+		slice := []string{"Hello there.", "How are you?"}
+		full := "Hello there. How are you?"
+		newStr, updated := joinSentencesAndCaptureTrailing(slice, full, full)
+		if newStr != "Hello there. How are you?" {
+			t.Errorf("newStr = %q", newStr)
+		}
+		if len(updated) != 2 {
+			t.Errorf("expected no extra entry appended, got %d entries: %v", len(updated), updated)
+		}
+	})
+
+	t.Run("captures content after the last punctuation mark", func(t *testing.T) {
+		slice := []string{"Hello there."}
+		fullResp := "Hello there. and a bit more"
+		full := "Hello there. and a bit more"
+		newStr, updated := joinSentencesAndCaptureTrailing(slice, fullResp, full)
+		if newStr != "Hello there." {
+			t.Errorf("newStr = %q, want %q", newStr, "Hello there.")
+		}
+		if len(updated) != 2 {
+			t.Fatalf("expected the trailing bit appended as a second entry, got %d entries: %v", len(updated), updated)
+		}
+		if updated[1] != " and a bit more" {
+			t.Errorf("trailing entry = %q, want %q", updated[1], " and a bit more")
+		}
+	})
+}

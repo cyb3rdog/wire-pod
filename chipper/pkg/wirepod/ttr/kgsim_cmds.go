@@ -29,7 +29,7 @@ const (
 	// arg: now
 	ActionGetImage   = 3
 	ActionNewRequest = 4
-	// arg: sound file	
+	// arg: sound file
 	ActionPlaySound = 5
 )
 
@@ -508,11 +508,8 @@ func DoGetImage(msgs []openai.ChatCompletionMessage, param string, robot *vector
 	stream, err := c.CreateChatCompletionStream(ctx, aireq)
 	if err != nil {
 		if strings.Contains(err.Error(), "does not exist") && knowledge.Provider == "openai" {
-			logger.Println("GPT-4 model cannot be accessed with this API key. You likely need to add more than $5 dollars of funds to your OpenAI account.")
-			logger.LogUI("GPT-4 model cannot be accessed with this API key. You likely need to add more than $5 dollars of funds to your OpenAI account.")
 			aireq.Model = openai.GPT3Dot5Turbo
-			logger.Println("Falling back to " + aireq.Model)
-			logger.LogUI("Falling back to " + aireq.Model)
+			logGPT4FallbackWarning(aireq.Model)
 			stream, err = c.CreateChatCompletionStream(ctx, aireq)
 			if err != nil {
 				logger.Println("OpenAI still not returning a response even after falling back. Erroring.")
@@ -536,18 +533,8 @@ func DoGetImage(msgs []openai.ChatCompletionMessage, param string, robot *vector
 					return
 				}
 				isDone = true
-				newStr := fullRespSlice[0]
-				for i, str := range fullRespSlice {
-					if i == 0 {
-						continue
-					}
-					newStr = newStr + " " + str
-				}
-				if strings.TrimSpace(newStr) != strings.TrimSpace(fullfullRespText) {
-					logger.Println("LLM debug: there is content after the last punctuation mark")
-					extraBit := strings.TrimPrefix(fullRespText, newStr)
-					fullRespSlice = append(fullRespSlice, extraBit)
-				}
+				var newStr string
+				newStr, fullRespSlice = joinSentencesAndCaptureTrailing(fullRespSlice, fullRespText, fullfullRespText)
 				if vars.GetAPIConfig().Knowledge.SaveChat {
 					Remember(msgs[len(msgs)-1],
 						openai.ChatCompletionMessage{
@@ -666,6 +653,7 @@ func PerformActions(msgs []openai.ChatCompletionMessage, actions []RobotAction, 
 	WaitForAnim_Queue(robot.Cfg.SerialNo)
 	return false
 }
+
 var animQueueMu sync.Mutex
 
 func WaitForAnim_Queue(esn string) {

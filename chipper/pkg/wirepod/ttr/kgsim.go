@@ -246,6 +246,47 @@ func newLLMClient() (*openai.Client, string) {
 	return nil, endpoint
 }
 
+// joinSentencesAndCaptureTrailing joins fullRespSlice (the response,
+// already split into sentences on terminal punctuation) into one
+// space-separated string, and -- if the raw stream text (fullRespText)
+// has content after the last sentence that mark, which fullfullRespText
+// (the full text seen so far) lets this detect -- appends that trailing
+// bit onto fullRespSlice too, so it isn't silently dropped. Returns the
+// joined string and the (possibly extended) slice; callers must assign
+// the second return back to their own fullRespSlice with a plain `=`
+// (not `:=`) when called from inside a goroutine closure that shares
+// that variable with the enclosing function, same as the inline version
+// this replaces did via a direct append. Previously duplicated
+// identically in StreamingKGSim (this file) and DoGetImage
+// (kgsim_cmds.go).
+func joinSentencesAndCaptureTrailing(fullRespSlice []string, fullRespText, fullfullRespText string) (string, []string) {
+	newStr := fullRespSlice[0]
+	for i, str := range fullRespSlice {
+		if i == 0 {
+			continue
+		}
+		newStr = newStr + " " + str
+	}
+	if strings.TrimSpace(newStr) != strings.TrimSpace(fullfullRespText) {
+		logger.Println("LLM debug: there is content after the last punctuation mark")
+		extraBit := strings.TrimPrefix(fullRespText, newStr)
+		fullRespSlice = append(fullRespSlice, extraBit)
+	}
+	return newStr, fullRespSlice
+}
+
+// logGPT4FallbackWarning logs (to both the app log and the dashboard's
+// "recent activity") that the configured OpenAI API key can't reach
+// GPT-4 and this request is retrying with fallbackModel instead.
+// Previously this exact four-line message pair was duplicated verbatim
+// in StreamingKGSim (below) and DoGetImage (kgsim_cmds.go).
+func logGPT4FallbackWarning(fallbackModel string) {
+	logger.Println("GPT-4 model cannot be accessed with this API key. You likely need to add more than $5 dollars of funds to your OpenAI account.")
+	logger.LogUI("GPT-4 model cannot be accessed with this API key. You likely need to add more than $5 dollars of funds to your OpenAI account.")
+	logger.Println("Falling back to " + fallbackModel)
+	logger.LogUI("Falling back to " + fallbackModel)
+}
+
 func logLLMError(what, endpoint, model string, elapsed time.Duration, err error) {
 	var detail string
 	var reqErr *openai.RequestError
@@ -359,11 +400,8 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 	if err != nil {
 		logLLMError("creating chat completion stream", llmEndpoint, aireq.Model, time.Since(llmStart), err)
 		if strings.Contains(err.Error(), "does not exist") && vars.GetAPIConfig().Knowledge.Provider == "openai" {
-			logger.Println("GPT-4 model cannot be accessed with this API key. You likely need to add more than $5 dollars of funds to your OpenAI account.")
-			logger.LogUI("GPT-4 model cannot be accessed with this API key. You likely need to add more than $5 dollars of funds to your OpenAI account.")
 			aireq := CreateAIReq(transcribedText, esn, true, isKG)
-			logger.Println("Falling back to " + aireq.Model)
-			logger.LogUI("Falling back to " + aireq.Model)
+			logGPT4FallbackWarning(aireq.Model)
 			llmStart = time.Now()
 			stream, err = c.CreateChatCompletionStream(ctx, aireq)
 			if err != nil {
@@ -424,19 +462,8 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
 					successIntent <- true
 				}
 				isDone = true
-				// if fullRespSlice != fullRespText, add that missing bit to fullRespSlice
-				newStr := fullRespSlice[0]
-				for i, str := range fullRespSlice {
-					if i == 0 {
-						continue
-					}
-					newStr = newStr + " " + str
-				}
-				if strings.TrimSpace(newStr) != strings.TrimSpace(fullfullRespText) {
-					logger.Println("LLM debug: there is content after the last punctuation mark")
-					extraBit := strings.TrimPrefix(fullRespText, newStr)
-					fullRespSlice = append(fullRespSlice, extraBit)
-				}
+				var newStr string
+				newStr, fullRespSlice = joinSentencesAndCaptureTrailing(fullRespSlice, fullRespText, fullfullRespText)
 				if vars.GetAPIConfig().Knowledge.SaveChat {
 					Remember(openai.ChatCompletionMessage{
 						Role:    openai.ChatMessageRoleUser,
