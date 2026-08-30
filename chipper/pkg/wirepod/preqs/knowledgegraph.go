@@ -1,62 +1,21 @@
 package processreqs
 
 import (
-	"encoding/json"
 	"regexp"
-	"strings"
 	"time"
 
 	pb "github.com/digital-dream-labs/api/go/chipperpb"
+	"github.com/kercre123/wire-pod/chipper/pkg/houndify"
 	"github.com/kercre123/wire-pod/chipper/pkg/logger"
 	"github.com/kercre123/wire-pod/chipper/pkg/vars"
 	"github.com/kercre123/wire-pod/chipper/pkg/vtt"
 	sr "github.com/kercre123/wire-pod/chipper/pkg/wirepod/speechrequest"
 	ttr "github.com/kercre123/wire-pod/chipper/pkg/wirepod/ttr"
-	"github.com/pkg/errors"
-	"github.com/soundhound/houndify-sdk-go"
+	houndifysdk "github.com/soundhound/houndify-sdk-go"
 )
 
-var HKGclient houndify.Client
+var HKGclient houndifysdk.Client
 var HoundEnable bool = true
-
-func ParseSpokenResponse(serverResponseJSON string) (string, error) {
-	result := make(map[string]interface{})
-	err := json.Unmarshal([]byte(serverResponseJSON), &result)
-	if err != nil {
-		logger.Println(err.Error())
-		return "", errors.New("failed to decode json")
-	}
-
-	status, ok := result["Status"].(string)
-	if !ok {
-		return "", errors.New("unexpected houndify response: missing Status")
-	}
-	if !strings.EqualFold(status, "OK") {
-		if msg, ok := result["ErrorMessage"].(string); ok {
-			return "", errors.New(msg)
-		}
-		return "", errors.New("houndify request failed")
-	}
-
-	numToReturn, ok := result["NumToReturn"].(float64)
-	if !ok || numToReturn < 1 {
-		return "", errors.New("no results to return")
-	}
-
-	allResults, ok := result["AllResults"].([]interface{})
-	if !ok || len(allResults) == 0 {
-		return "", errors.New("unexpected houndify response: missing AllResults")
-	}
-	firstResult, ok := allResults[0].(map[string]interface{})
-	if !ok {
-		return "", errors.New("unexpected houndify response: malformed result")
-	}
-	spokenResponse, ok := firstResult["SpokenResponseLong"].(string)
-	if !ok {
-		return "", errors.New("unexpected houndify response: missing SpokenResponseLong")
-	}
-	return spokenResponse, nil
-}
 
 func InitKnowledge() {
 	knowledge := vars.GetAPIConfig().Knowledge
@@ -73,7 +32,7 @@ func InitKnowledge() {
 			})
 			logger.Println("Houndify Client Key or ID was empty, not initializing kg client")
 		} else {
-			HKGclient = houndify.Client{
+			HKGclient = houndifysdk.Client{
 				ClientID:  knowledge.ID,
 				ClientKey: knowledge.Key,
 			}
@@ -92,7 +51,7 @@ func houndifyKG(req sr.SpeechRequest) string {
 	if knowledge.Enable && knowledge.Provider == "houndify" {
 		logger.Println("Sending request to Houndify...")
 		serverResponse := StreamAudioToHoundify(req, HKGclient)
-		apiResponse, _ = ParseSpokenResponse(serverResponse)
+		apiResponse, _ = houndify.ParseSpokenResponse(serverResponse)
 		logger.Println("Houndify response: " + apiResponse)
 	} else {
 		apiResponse = "Houndify is not enabled."
@@ -178,7 +137,7 @@ func houndifyTextRequest(queryText string, device string, session string) string
 
 	logger.Println("Sending text request to Houndify...")
 
-	req := houndify.TextRequest{
+	req := houndifysdk.TextRequest{
 		Query:     queryText,
 		UserID:    device,
 		RequestID: session,
@@ -190,7 +149,7 @@ func houndifyTextRequest(queryText string, device string, session string) string
 		return ""
 	}
 
-	apiResponse, err := ParseSpokenResponse(serverResponse)
+	apiResponse, err := houndify.ParseSpokenResponse(serverResponse)
 	if err != nil {
 		logger.Println("Error parsing Houndify response:", err)
 		logger.Println("Raw response:", serverResponse)

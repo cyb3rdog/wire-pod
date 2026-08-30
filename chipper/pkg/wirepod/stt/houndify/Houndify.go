@@ -5,10 +5,10 @@ import (
 	"io"
 	"os"
 
+	"github.com/kercre123/wire-pod/chipper/pkg/houndify"
 	"github.com/kercre123/wire-pod/chipper/pkg/logger"
-	preqs "github.com/kercre123/wire-pod/chipper/pkg/wirepod/preqs"
 	sr "github.com/kercre123/wire-pod/chipper/pkg/wirepod/speechrequest"
-	"github.com/soundhound/houndify-sdk-go"
+	houndifysdk "github.com/soundhound/houndify-sdk-go"
 )
 
 // to use, you must create a Houndify client with the only domain enabled being "Speech to text only"
@@ -17,7 +17,7 @@ import (
 
 var Name string = "houndify"
 
-var houndSTTClient houndify.Client
+var houndSTTClient houndifysdk.Client
 
 func Init() error {
 	if os.Getenv("HOUNDIFY_STT_ID") == "" {
@@ -28,7 +28,7 @@ func Init() error {
 		logger.Println("Houndify STT Client Key not found.")
 		return fmt.Errorf("houndify stt client key not found")
 	}
-	houndSTTClient = houndify.Client{
+	houndSTTClient = houndifysdk.Client{
 		ClientID:  os.Getenv("HOUNDIFY_STT_ID"),
 		ClientKey: os.Getenv("HOUNDIFY_STT_KEY"),
 	}
@@ -41,7 +41,7 @@ func STT(sreq sr.SpeechRequest) (string, error) {
 	logger.Println("Incoming request")
 	var err error
 	rp, wp := io.Pipe()
-	req := houndify.VoiceRequest{
+	req := houndifysdk.VoiceRequest{
 		AudioStream: rp,
 		UserID:      sreq.Device,
 		RequestID:   sreq.Session,
@@ -71,7 +71,7 @@ func STT(sreq sr.SpeechRequest) (string, error) {
 		}
 	}(wp)
 
-	partialTranscripts := make(chan houndify.PartialTranscript)
+	partialTranscripts := make(chan houndifysdk.PartialTranscript)
 	go func() {
 		for partial := range partialTranscripts {
 			if *partial.SafeToStopAudio {
@@ -87,7 +87,7 @@ func STT(sreq sr.SpeechRequest) (string, error) {
 		fmt.Println(err)
 		fmt.Println(serverResponse)
 	}
-	resp, _ := preqs.ParseSpokenResponse(serverResponse)
+	resp, _ := houndify.ParseSpokenResponse(serverResponse)
 	logger.Println("Houndify response: " + resp)
 	return resp, nil
 }

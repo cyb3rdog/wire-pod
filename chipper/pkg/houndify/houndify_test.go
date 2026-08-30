@@ -1,4 +1,4 @@
-package processreqs
+package houndify
 
 import "testing"
 
